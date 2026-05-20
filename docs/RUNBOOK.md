@@ -65,10 +65,12 @@ docker exec chatcenter_nginx nginx -s reload
 
 ## Conectar uma nova instância do WhatsApp
 
-1. Acesse <https://chat.moveisvalcenter.com.br/evolution/manager>.
+1. Acesse <https://chat.moveisvalcenter.com.br/evolution/manager/> (com a barra final — sem ela cai num redirect quebrado do Evolution).
 2. Login com `EVOLUTION_API_KEY` (do `.env`).
 3. Crie/abra a instância e escaneie o QR.
 4. No Chatwoot, vincule um inbox via webhook (a integração nativa Evolution↔Chatwoot já está habilitada — `CHATWOOT_ENABLED=true`).
+
+> O acesso direto a `http://<server_ip>:8080/manager` foi desativado (porta 8080 não exposta no host, regra UFW removida). Tudo passa pelo nginx com TLS.
 
 ## Adicionar/rotar uma variável de ambiente
 

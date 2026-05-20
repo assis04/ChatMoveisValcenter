@@ -95,12 +95,15 @@ services:
       - chatcenter
 
   # ─── Evolution API (WhatsApp bridge) ─────────────────────────
+  # Note: no `ports:` block on purpose — Evolution is only reachable through
+  # nginx at https://chat.moveisvalcenter.com.br/evolution/. Internally,
+  # other containers reach it via `evolution:8080` on the chatcenter_net
+  # network. Exposing 8080 directly on the host would bypass TLS and the
+  # nginx rate-limits.
   evolution:
     image: evoapicloud/evolution-api:v2.3.7
     container_name: chatcenter_evolution
     restart: unless-stopped
-    ports:
-      - "8080:8080"
     depends_on:
       redis:
         condition: service_healthy

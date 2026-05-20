@@ -44,7 +44,7 @@ services:
 
   # ─── Chatwoot (Web) ──────────────────────────────────────────
   chatwoot-web:
-    image: chatcenter/chatwoot:v4.14.0-search
+    image: ghcr.io/lucashavg/chatwoot:chatcenter-v4.14.0-search@sha256:2732ede6fff16bca4065f173063f6abd7475ce56d06f98b533e13c9ae6058c8a
     container_name: chatcenter_chatwoot_web
     restart: unless-stopped
     depends_on:
@@ -71,7 +71,7 @@ services:
 
   # ─── Chatwoot (Sidekiq — background jobs) ────────────────────
   chatwoot-sidekiq:
-    image: chatcenter/chatwoot:v4.14.0-search
+    image: ghcr.io/lucashavg/chatwoot:chatcenter-v4.14.0-search@sha256:2732ede6fff16bca4065f173063f6abd7475ce56d06f98b533e13c9ae6058c8a
     container_name: chatcenter_chatwoot_sidekiq
     restart: unless-stopped
     depends_on:

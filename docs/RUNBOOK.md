@@ -110,17 +110,21 @@ cd /root/chatcenter
 docker compose run --rm chatwoot-web bundle exec rails db:chatwoot_prepare
 ```
 
-## Rebuild da imagem custom do Chatwoot (transição: hoje builda no host)
+## Atualizar a imagem custom do Chatwoot
 
-```sh
-cd /root/chatwoot-fork
-git fetch --tags upstream            # quando o remote estiver corrigido (ver ADR 0003)
-docker build -t chatcenter/chatwoot:v4.14.0-search .
-cd /root/chatcenter
-docker compose up -d chatwoot-web chatwoot-sidekiq
-```
+A imagem mora no GHCR (`ghcr.io/lucashavg/chatwoot:chatcenter-v4.14.0-search`) buildada pelo workflow `chatcenter-image.yml` no fork [Lucashavg/chatwoot](https://github.com/Lucashavg/chatwoot). O `docker-compose.yml` aqui faz **pin por digest** — mudanças exigem PR explícito (immutabilidade > conveniência).
 
-Quando o fork estiver no GitHub e a imagem no GHCR, esse fluxo vira `docker compose pull && docker compose up -d`.
+Para subir uma nova customização:
+
+1. **No fork** (`~/projects/chatwoot/`): editar o arquivo, commit, push em `chatcenter/v4.14.0-search`.
+2. **Esperar o workflow** — ~25 min de build na primeira vez, ~5-10 min com cache do GHA. Veja em <https://github.com/Lucashavg/chatwoot/actions>.
+3. **Pegar o novo digest**: na página do run, ou via `docker pull ghcr.io/lucashavg/chatwoot:chatcenter-v4.14.0-search && docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/lucashavg/chatwoot:chatcenter-v4.14.0-search`.
+4. **Neste repo**: trocar o digest em `docker-compose.yml` (chatwoot-web e chatwoot-sidekiq, ambos), commit, push.
+5. **No servidor**: `cd /root/chatcenter && git pull && docker compose pull chatwoot-web chatwoot-sidekiq && docker compose up -d chatwoot-web chatwoot-sidekiq`.
+
+Rollback: reverter o commit que mudou o digest e repetir o passo 5.
+
+Para mudar de versão do Chatwoot (ex.: 4.14 → 4.15), ver `CHATCENTER.md` no fork — implica nova branch.
 
 ## Smoke test pós-deploy
 

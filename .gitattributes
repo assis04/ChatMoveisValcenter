@@ -1,0 +1,18 @@
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.bash text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+
+package-lock.json -diff linguist-generated=true
+pnpm-lock.yaml -diff linguist-generated=true
+yarn.lock -diff linguist-generated=true

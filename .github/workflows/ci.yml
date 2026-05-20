@@ -1,0 +1,76 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: apps/web — lint + typecheck + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+  compose:
+    name: docker-compose — validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose file
+        env:
+          DOMAIN: example.com
+          SSL_EMAIL: a@example.com
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: x
+          SECRET_KEY_BASE: x
+          FRONTEND_URL: https://example.com
+          DATABASE_URL: postgresql://x:x@postgres:5432/x
+          REDIS_URL: redis://redis:6379/0
+          RAILS_MAX_THREADS: "5"
+          MAILER_SENDER_EMAIL: x
+          SMTP_ADDRESS: x
+          SMTP_PORT: "587"
+          SMTP_USERNAME: x
+          SMTP_PASSWORD: x
+          SMTP_AUTHENTICATION: login
+          SMTP_ENABLE_STARTTLS_AUTO: "true"
+          ACTIVE_STORAGE_SERVICE: local
+          EVOLUTION_API_KEY: x
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: x
+          SUPABASE_SERVICE_ROLE_KEY: x
+          ASAAS_API_KEY: x
+          ASAAS_ENVIRONMENT: sandbox
+          ANTHROPIC_API_KEY: x
+        run: docker compose config --quiet

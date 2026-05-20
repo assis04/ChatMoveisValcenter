@@ -1,0 +1,10 @@
+# Owners must approve every PR touching their paths.
+# Reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+*                       @Lucashavg
+
+# Infra and ops carry the highest blast radius — keep ownership explicit.
+/infra/                 @Lucashavg
+/docker-compose.yml     @Lucashavg
+/.github/               @Lucashavg
+/docs/adr/              @Lucashavg

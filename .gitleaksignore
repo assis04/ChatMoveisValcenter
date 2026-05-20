@@ -1,0 +1,3 @@
+# Gitleaks allowlist — fingerprints of strings that look like secrets but aren't.
+# Format: <commit_sha>:<file>:<rule_id>:<line>
+# Add only after auditing the false positive.

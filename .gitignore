@@ -1,0 +1,60 @@
+# ─── Secrets (NEVER commit) ───────────────────────────────────
+.env
+.env.local
+.env.production
+.env.*.local
+!.env.example
+secrets/*.dec.*
+*.pem
+*.key
+*.crt
+infra/nginx/ssl/*
+!infra/nginx/ssl/.gitkeep
+!infra/nginx/ssl/README.md
+
+# ─── Node / Next.js ───────────────────────────────────────────
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# ─── Logs ─────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ─── Coverage / test artifacts ───────────────────────────────
+coverage/
+.nyc_output/
+
+# ─── OS noise ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ─── Editor / IDE ─────────────────────────────────────────────
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── Claude / tooling ─────────────────────────────────────────
+.claude/settings.local.json
+.claude/cache/
+
+# ─── Local snapshots and ad-hoc dumps ─────────────────────────
+snapshots/
+*.dump
+*.sql.gz
+*.tar.gz
+*.bak

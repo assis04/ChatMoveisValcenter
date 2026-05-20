@@ -1,6 +1,6 @@
 # 0004 — Secrets em SOPS + age (commitáveis e cifrados)
 
-- Status: proposto
+- Status: aceito (cutover parcial — server-side feito em 2026-05-20)
 - Data: 2026-05-20
 - Decisor: Lucas (CTO)
 

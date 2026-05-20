@@ -72,9 +72,34 @@ docker exec chatcenter_nginx nginx -s reload
 
 ## Adicionar/rotar uma variável de ambiente
 
-1. Edite `/root/chatcenter/.env`.
-2. `cd /root/chatcenter && docker compose up -d <service>` para o serviço afetado.
-3. Para Chatwoot, normalmente: `docker compose restart chatwoot-web chatwoot-sidekiq`.
+Segredos vivem cifrados em `secrets/production.enc.yaml` (Chatwoot + Evolution + integrações) e `secrets/web.enc.yaml` (Next.js app). Edição via SOPS.
+
+**Do laptop do operador** (recomendado — preserva audit trail correto):
+```sh
+sops secrets/production.enc.yaml      # abre $EDITOR, salva → recifra
+git add secrets/production.enc.yaml
+git commit -m "secrets: rotate <X>"
+git push
+```
+
+Depois, no servidor:
+```sh
+cd /root/chatcenter && git pull && ./infra/scripts/deploy.sh
+```
+
+**No servidor (atalho):**
+```sh
+cd /root/chatcenter
+sops secrets/production.enc.yaml
+git commit -am "secrets: rotate <X>" && git push
+./infra/scripts/deploy.sh
+```
+
+Pra mudar só uma variável sem reiniciar tudo:
+```sh
+./infra/scripts/deploy.sh   # decifra ambos os .env
+docker compose up -d --no-deps <service>
+```
 
 ## Migrations do Chatwoot (durante upgrade da versão)
 

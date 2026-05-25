@@ -66,3 +66,39 @@ export interface ChatwootDashboardContext {
     email: string;
   };
 }
+
+// ─── WhatsApp Groups via Evolution API ────────────────────────
+export interface EvolutionGroupParticipant {
+  id: string; // <jid>@s.whatsapp.net
+  admin: "superadmin" | "admin" | null;
+}
+
+export interface EvolutionGroup {
+  id: string; // <jid>@g.us
+  subject: string;
+  subjectOwner?: string;
+  subjectTime?: number;
+  pictureUrl?: string | null;
+  size?: number;
+  creation?: number;
+  owner?: string;
+  desc?: string;
+  descId?: string;
+  restrict?: boolean;
+  announce?: boolean;
+  isCommunity?: boolean;
+  isCommunityAnnounce?: boolean;
+  participants?: EvolutionGroupParticipant[];
+}
+
+export type ParticipantAction = "add" | "remove" | "promote" | "demote";
+
+// Mapping resolved from Chatwoot inboxes ↔ Evolution instances.
+// Chatwoot.nameInbox on the Evolution instance is the join key.
+export interface InboxInstanceMapping {
+  inbox_id: number;
+  inbox_name: string;
+  instance_name: string;
+  instance_id: string;
+  connection_status: "open" | "close" | "connecting" | string;
+}

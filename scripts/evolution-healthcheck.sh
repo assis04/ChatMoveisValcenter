@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
-# Evolution WhatsApp health-check + auto-recovery
-# Detecta socket zumbi (connectionStatus mente) e reinicia o container.
+# Evolution WhatsApp health-check + auto-recovery (probe INTERNO via docker exec/node)
 set -uo pipefail
 
 CONTAINER="chatcenter_evolution"
-BASE="https://evolution.moveisvalcenter.com.br"
 INSTANCES=("Valcenter_Lucas" "Valcenter_ADM")
-PROBE_NUMBER="5511953437880"      # so consulta presenca; NAO envia mensagem
+PROBE_NUMBER="5511953437880"
 LOG="/var/log/evolution-healthcheck.log"
 COOLDOWN_FILE="/tmp/evo-hc-last-restart"
-COOLDOWN_SECONDS=900              # no maximo 1 restart / 15 min
+COOLDOWN_SECONDS=900
 
 ts(){ date '+%Y-%m-%d %H:%M:%S'; }
 log(){ echo "$(ts) $*" >> "$LOG"; }
@@ -28,20 +26,22 @@ restart_container(){
   fi
 }
 
+# probe INTERNO: node fetch em 127.0.0.1:8080 dentro do container (sem DNS/nginx/subdominio)
+probe(){
+  timeout 40 docker exec "$CONTAINER" node -e '
+    fetch("http://127.0.0.1:8080/chat/whatsappNumbers/"+process.argv[1],{
+      method:"POST",
+      headers:{apikey:process.env.AUTHENTICATION_API_KEY,"content-type":"application/json"},
+      body:JSON.stringify({numbers:[process.argv[2]]})
+    }).then(r=>r.text()).then(t=>{process.stdout.write(t);process.exit(0)})
+     .catch(e=>{process.stdout.write("PROBE_ERR:"+e.message);process.exit(1)})
+  ' "$1" "$PROBE_NUMBER" 2>/dev/null || echo ""
+}
+
 running=$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null || echo "false")
 if [ "$running" != "true" ]; then
   log "CONTAINER FORA DO AR."; restart_container; exit 0
 fi
-
-KEY=$(docker exec "$CONTAINER" printenv AUTHENTICATION_API_KEY 2>/dev/null || echo "")
-if [ -z "$KEY" ]; then
-  log "AVISO: container up mas sem API key (exec falhou). Pulando ciclo."; exit 0
-fi
-
-probe(){
-  curl -s --max-time 30 -X POST -H "apikey: $KEY" -H "Content-Type: application/json" \
-    "$BASE/chat/whatsappNumbers/$1" -d "{\"numbers\":[\"$PROBE_NUMBER\"]}" 2>/dev/null || echo ""
-}
 
 dead=0
 for inst in "${INSTANCES[@]}"; do
@@ -49,7 +49,7 @@ for inst in "${INSTANCES[@]}"; do
   if echo "$r" | grep -q '"exists"'; then
     log "OK    $inst"
   else
-    sleep 5; r=$(probe "$inst")   # recheck anti falso-positivo
+    sleep 5; r=$(probe "$inst")
     if echo "$r" | grep -q '"exists"'; then
       log "OK    $inst (recheck)"
     else

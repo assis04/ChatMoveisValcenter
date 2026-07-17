@@ -47,6 +47,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Create placeholder env files
+        # docker-compose.yml declara env_file (.env, apps/web/.env.production)
+        # que sao gitignored (segredos). Sao criados no deploy, nao existem no CI.
+        # Criamos vazios so pra validacao passar na checagem de existencia.
+        run: |
+          touch .env
+          touch apps/web/.env.production
       - name: Validate compose file
         env:
           DOMAIN: example.com

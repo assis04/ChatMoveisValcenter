@@ -6,7 +6,7 @@
     "dev": "next dev --turbopack -p 3001",
     "build": "next build",
     "start": "next start -p 3001",
-    "lint": "next lint",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -20,6 +20,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.6",
     "@tailwindcss/postcss": "^4.1.6",
     "@types/node": "^22.15.17",
     "@types/react": "^19.1.3",

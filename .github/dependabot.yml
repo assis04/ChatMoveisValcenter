@@ -3,8 +3,7 @@ updates:
   - package-ecosystem: npm
     directory: /apps/web
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
       time: "09:00"
       timezone: America/Sao_Paulo
     open-pull-requests-limit: 5
@@ -22,11 +21,19 @@ updates:
         patterns: ["@types/*"]
       supabase:
         patterns: ["@supabase/*"]
+    ignore:
+      # Major do Next e uma migracao deliberada (muda build, remove `next lint`),
+      # nao um bump de rotina. Fazemos manualmente quando houver tempo; sem isso
+      # o dependabot reabre o PR vermelho do Next 16 todo mes.
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker
     directory: /apps/web
     schedule:
-      interval: weekly
+      interval: monthly
     labels:
       - dependencies
       - docker
@@ -34,7 +41,7 @@ updates:
   - package-ecosystem: docker
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     labels:
       - dependencies
       - docker
@@ -42,7 +49,11 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     labels:
       - dependencies
       - ci
+    groups:
+      # Um PR unico com todos os bumps de actions em vez de 5 separados.
+      actions:
+        patterns: ["*"]

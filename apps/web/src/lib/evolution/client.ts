@@ -6,12 +6,14 @@ interface EvolutionRequestOptions {
   method?: string;
   path: string;
   body?: Record<string, unknown>;
+  timeoutMs?: number;
 }
 
 export async function evolutionRequest<T>({
   method = "GET",
   path,
   body,
+  timeoutMs,
 }: EvolutionRequestOptions): Promise<T> {
   const url = `${EVOLUTION_URL}${path}`;
 
@@ -22,6 +24,7 @@ export async function evolutionRequest<T>({
       apikey: EVOLUTION_API_KEY,
     },
     body: body ? JSON.stringify(body) : undefined,
+    ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
   });
 
   if (!response.ok) {

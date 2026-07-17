@@ -51,6 +51,8 @@ export async function fetchAllGroups(
   const qs = `?getParticipants=${getParticipants ? "true" : "false"}`;
   return evolutionRequest<EvolutionGroup[]>({
     path: `/group/fetchAllGroups/${encodeURIComponent(instance)}${qs}`,
+    // fetchAllGroups pode levar 125s+ (ADM passa de 180s); damos folga generosa
+    timeoutMs: 280_000,
   });
 }
 

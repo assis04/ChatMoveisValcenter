@@ -13,15 +13,49 @@ export const dynamic = "force-dynamic";
 // levar 60–120s em inboxes com centenas de grupos. Memoizamos por
 // (instance, includeParticipants) com TTL curto pra absorver re-listagens
 // frequentes da UI (foco do tab, abrir modal, etc.).
-const GROUPS_TTL_MS = 5 * 60_000;
+// Stale-while-revalidate: servimos o cache na hora (mesmo levemente velho) e
+// revalidamos em BACKGROUND (fire-and-forget), pra o usuario nunca esperar os
+// 125s+ do fetchAllGroups. So a primeirissima carga (sem cache) bloqueia — e o
+// cron de warm-up pre-popula pra evitar ate isso.
+const GROUPS_FRESH_MS = 30 * 60_000; // apos isso, revalida em background
 type CacheKey = string;
-const groupsCache = new Map<
-  CacheKey,
-  { value: EvolutionGroup[]; expiresAt: number; inflight?: Promise<EvolutionGroup[]> }
->();
+type CacheEntry = {
+  value: EvolutionGroup[];
+  fetchedAt: number; // 0 = nunca teve fetch bem-sucedido
+  inflight?: Promise<EvolutionGroup[]>;
+};
+const groupsCache = new Map<CacheKey, CacheEntry>();
 
 function cacheKey(instance: string, includeParticipants: boolean): CacheKey {
   return `${instance}|${includeParticipants ? 1 : 0}`;
+}
+
+function refreshGroups(
+  key: CacheKey,
+  instance: string,
+  includeParticipants: boolean,
+): Promise<EvolutionGroup[]> {
+  const current = groupsCache.get(key);
+  if (current?.inflight) return current.inflight;
+
+  const inflight = fetchAllGroups(instance, includeParticipants)
+    .then((value) => {
+      groupsCache.set(key, { value, fetchedAt: Date.now() });
+      return value;
+    })
+    .catch((err) => {
+      // mantem o valor velho (se houver); so limpa o inflight
+      const e = groupsCache.get(key);
+      if (e) groupsCache.set(key, { value: e.value, fetchedAt: e.fetchedAt });
+      throw err;
+    });
+
+  groupsCache.set(key, {
+    value: current?.value ?? [],
+    fetchedAt: current?.fetchedAt ?? 0,
+    inflight,
+  });
+  return inflight;
 }
 
 async function cachedFetchAllGroups(
@@ -29,29 +63,18 @@ async function cachedFetchAllGroups(
   includeParticipants: boolean,
 ): Promise<EvolutionGroup[]> {
   const key = cacheKey(instance, includeParticipants);
-  const now = Date.now();
   const entry = groupsCache.get(key);
 
-  if (entry && entry.expiresAt > now) return entry.value;
-  if (entry?.inflight) return entry.inflight;
+  // Sem cache ainda (primeira carga) -> bloqueia ate o fetch completar.
+  if (!entry || entry.fetchedAt === 0) {
+    return refreshGroups(key, instance, includeParticipants);
+  }
 
-  const inflight = fetchAllGroups(instance, includeParticipants)
-    .then((value) => {
-      groupsCache.set(key, { value, expiresAt: Date.now() + GROUPS_TTL_MS });
-      return value;
-    })
-    .catch((err) => {
-      groupsCache.delete(key);
-      throw err;
-    });
-
-  groupsCache.set(key, {
-    value: entry?.value ?? [],
-    expiresAt: 0,
-    inflight,
-  });
-
-  return inflight;
+  // Tem cache -> serve na hora. Se velho, revalida em background (nao bloqueia).
+  if (Date.now() - entry.fetchedAt > GROUPS_FRESH_MS && !entry.inflight) {
+    void refreshGroups(key, instance, includeParticipants).catch(() => {});
+  }
+  return entry.value;
 }
 
 function invalidateGroupsCache(instance: string): void {

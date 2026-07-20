@@ -58,23 +58,29 @@ function refreshGroups(
   return inflight;
 }
 
-async function cachedFetchAllGroups(
+type GroupsResult = { groups: EvolutionGroup[]; warming: boolean };
+
+function getGroupsCached(
   instance: string,
   includeParticipants: boolean,
-): Promise<EvolutionGroup[]> {
+): GroupsResult {
   const key = cacheKey(instance, includeParticipants);
   const entry = groupsCache.get(key);
 
-  // Sem cache ainda (primeira carga) -> bloqueia ate o fetch completar.
+  // Cold (nunca teve fetch bem-sucedido): NAO bloqueia. Dispara o fetch em
+  // background e devolve warming=true na hora. Antes isso travava a tela por
+  // 125s+ (ex: logo apos um deploy, que zera o cache em memoria); agora a UI
+  // abre instantaneamente e os grupos aparecem sozinhos quando ficam prontos.
   if (!entry || entry.fetchedAt === 0) {
-    return refreshGroups(key, instance, includeParticipants);
+    void refreshGroups(key, instance, includeParticipants).catch(() => {});
+    return { groups: entry?.value ?? [], warming: true };
   }
 
   // Tem cache -> serve na hora. Se velho, revalida em background (nao bloqueia).
   if (Date.now() - entry.fetchedAt > GROUPS_FRESH_MS && !entry.inflight) {
     void refreshGroups(key, instance, includeParticipants).catch(() => {});
   }
-  return entry.value;
+  return { groups: entry.value, warming: false };
 }
 
 function invalidateGroupsCache(instance: string): void {
@@ -107,11 +113,11 @@ export async function GET(req: NextRequest) {
     const force = req.nextUrl.searchParams.get("refresh") === "true";
     if (force) invalidateGroupsCache(lookup.mapping.instance_name);
 
-    const groups = await cachedFetchAllGroups(
+    const { groups, warming } = getGroupsCached(
       lookup.mapping.instance_name,
       includeParticipants,
     );
-    return NextResponse.json({ inbox_id: inboxId, groups });
+    return NextResponse.json({ inbox_id: inboxId, groups, warming });
   } catch (err) {
     return handleApiError(err);
   }

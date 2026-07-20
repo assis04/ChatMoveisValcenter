@@ -24,7 +24,7 @@ export function GroupsListView() {
   const [activeInboxId, setActiveInboxId] = useState<number | null>(null);
   const effectiveInboxId = activeInboxId ?? connected[0]?.inbox_id ?? null;
 
-  const { data: groups, loading, error, reload } = useGroups(
+  const { data: groups, loading, error, warming, reload } = useGroups(
     effectiveInboxId,
     { includeParticipants: false },
   );
@@ -129,6 +129,19 @@ export function GroupsListView() {
               ) : error ? (
                 <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
                   {error}
+                </div>
+              ) : warming && filtered.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/50" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Preparando seus grupos…
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground/70">
+                      A primeira carga pode levar até um minuto. Eles aparecem
+                      sozinhos.
+                    </p>
+                  </div>
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">

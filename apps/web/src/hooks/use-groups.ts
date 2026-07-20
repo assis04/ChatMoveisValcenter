@@ -51,26 +51,34 @@ export function useGroups(
   inboxId: number | null,
   options: { includeParticipants?: boolean } = {},
 ) {
-  const [state, setState] = useState<AsyncState<EvolutionGroup[]>>(initial());
+  const [state, setState] = useState<
+    AsyncState<EvolutionGroup[]> & { warming: boolean }
+  >({ data: null, loading: true, error: null, warming: false });
 
   const reload = useCallback(async () => {
     if (!inboxId) {
-      setState({ data: null, loading: false, error: null });
+      setState({ data: null, loading: false, error: null, warming: false });
       return;
     }
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
       const qs = new URLSearchParams({ inbox_id: String(inboxId) });
       if (options.includeParticipants) qs.set("participants", "true");
-      const res = await api<{ groups: EvolutionGroup[] }>(
+      const res = await api<{ groups: EvolutionGroup[]; warming?: boolean }>(
         `/api/groups?${qs.toString()}`,
       );
-      setState({ data: res.groups, loading: false, error: null });
+      setState({
+        data: res.groups,
+        loading: false,
+        error: null,
+        warming: res.warming ?? false,
+      });
     } catch (err) {
       setState({
         data: null,
         loading: false,
         error: err instanceof Error ? err.message : "erro desconhecido",
+        warming: false,
       });
     }
   }, [inboxId, options.includeParticipants]);
@@ -78,6 +86,17 @@ export function useGroups(
   useEffect(() => {
     reload();
   }, [reload]);
+
+  // O servidor devolve warming=true na primeira carga (cache frio) e busca os
+  // grupos em background. Enquanto isso, pollamos a cada 3s ate chegarem — a
+  // UI nunca trava esperando o fetchAllGroups (125s+).
+  useEffect(() => {
+    if (!state.warming) return;
+    const id = setInterval(() => {
+      void reload();
+    }, 3000);
+    return () => clearInterval(id);
+  }, [state.warming, reload]);
 
   return { ...state, reload };
 }

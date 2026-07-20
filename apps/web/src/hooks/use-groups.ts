@@ -19,6 +19,11 @@ function initial<T>(): AsyncState<T> {
   return { data: null, loading: true, error: null };
 }
 
+export interface GroupInvite {
+  inviteUrl: string;
+  inviteCode: string;
+}
+
 export function useInboxes() {
   const [state, setState] = useState<AsyncState<InboxInstanceMapping[]>>(
     initial(),
@@ -131,6 +136,36 @@ export function useGroup(inboxId: number | null, jid: string | null) {
   return { ...state, reload };
 }
 
+export function useGroupInvite(inboxId: number | null, jid: string | null) {
+  const [state, setState] = useState<AsyncState<GroupInvite>>(initial());
+
+  const reload = useCallback(async () => {
+    if (!inboxId || !jid) {
+      setState({ data: null, loading: false, error: null });
+      return;
+    }
+    setState((s) => ({ ...s, loading: true, error: null }));
+    try {
+      const res = await api<{ invite: GroupInvite }>(
+        `/api/groups/${encodeURIComponent(jid)}/invite?inbox_id=${inboxId}`,
+      );
+      setState({ data: res.invite, loading: false, error: null });
+    } catch (err) {
+      setState({
+        data: null,
+        loading: false,
+        error: err instanceof Error ? err.message : "erro desconhecido",
+      });
+    }
+  }, [inboxId, jid]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  return { ...state, reload };
+}
+
 // ─── Mutations ────────────────────────────────────────────────
 
 export async function createGroup(input: {
@@ -186,6 +221,17 @@ export async function leaveGroup(input: {
   await api(`/api/groups/${encodeURIComponent(input.jid)}?inbox_id=${input.inbox_id}`, {
     method: "DELETE",
   });
+}
+
+export async function revokeGroupInvite(input: {
+  inbox_id: number;
+  jid: string;
+}): Promise<GroupInvite> {
+  const res = await api<{ invite: GroupInvite }>(
+    `/api/groups/${encodeURIComponent(input.jid)}/invite?inbox_id=${input.inbox_id}`,
+    { method: "POST" },
+  );
+  return res.invite;
 }
 
 export type { EvolutionGroup, EvolutionGroupParticipant };

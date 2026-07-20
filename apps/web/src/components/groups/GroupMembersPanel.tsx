@@ -5,7 +5,9 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Check,
+  Copy,
   Crown,
+  Link2,
   Loader2,
   LogOut,
   MoreVertical,
@@ -20,8 +22,10 @@ import { Avatar } from "@/components/ui/Avatar";
 import {
   leaveGroup,
   patchGroup,
+  revokeGroupInvite,
   updateParticipants,
   useGroup,
+  useGroupInvite,
 } from "@/hooks/use-groups";
 import { useResolvedContacts } from "@/hooks/use-resolved-contacts";
 import { ContactPicker } from "./ContactPicker";
@@ -47,6 +51,8 @@ export function GroupMembersPanel({
   const [editing, setEditing] = useState(false);
   const [editSubject, setEditSubject] = useState("");
   const [editDesc, setEditDesc] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [revoking, setRevoking] = useState(false);
 
   const sortedParticipants = useMemo(() => {
     const list = group?.participants ?? [];
@@ -62,6 +68,7 @@ export function GroupMembersPanel({
     [sortedParticipants],
   );
   const resolved = useResolvedContacts(phones);
+  const invite = useGroupInvite(inboxId, jid);
 
   if (loading) {
     return (
@@ -117,6 +124,30 @@ export function GroupMembersPanel({
       setActionError(err instanceof Error ? err.message : "erro");
     } finally {
       setPending(null);
+    }
+  };
+
+  const copyInvite = async () => {
+    if (!invite.data) return;
+    try {
+      await navigator.clipboard.writeText(invite.data.inviteUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard pode ser bloqueado no iframe; ignora
+    }
+  };
+
+  const handleRevoke = async () => {
+    if (!confirm("Gerar um novo link invalida o link atual. Continuar?")) return;
+    setRevoking(true);
+    try {
+      await revokeGroupInvite({ inbox_id: inboxId, jid });
+      await invite.reload();
+    } catch {
+      // erro reaparece no bloco de convite ao recarregar
+    } finally {
+      setRevoking(false);
     }
   };
 
@@ -231,6 +262,46 @@ export function GroupMembersPanel({
         </div>
 
       </header>
+
+      <div className="border-b border-border/40 px-4 py-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Link de convite
+          </span>
+          {invite.data ? (
+            <button
+              onClick={handleRevoke}
+              disabled={revoking}
+              className="text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
+            >
+              {revoking ? "Gerando…" : "Gerar novo"}
+            </button>
+          ) : null}
+        </div>
+        {invite.loading ? (
+          <div className="text-xs text-muted-foreground">Carregando link…</div>
+        ) : invite.error ? (
+          <div className="text-xs text-muted-foreground/70">
+            Link indisponível — o número precisa ser admin do grupo.
+          </div>
+        ) : invite.data ? (
+          <button
+            onClick={copyInvite}
+            className="flex w-full items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-left transition-colors hover:bg-muted/30"
+            title="Copiar link"
+          >
+            <Link2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate text-xs">
+              {invite.data.inviteUrl}
+            </span>
+            {copied ? (
+              <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+            ) : (
+              <Copy className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            )}
+          </button>
+        ) : null}
+      </div>
 
       <div className="flex items-center justify-between border-b border-border/40 px-4 py-2.5">
         <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">

@@ -66,6 +66,33 @@ export async function findGroupInfos(
   });
 }
 
+export interface GroupInvite {
+  inviteUrl: string;
+  inviteCode: string;
+}
+
+export async function fetchGroupInviteCode(
+  instance: string,
+  groupJid: string,
+): Promise<GroupInvite> {
+  assertGroupJid(groupJid);
+  return evolutionRequest<GroupInvite>({
+    path: `/group/inviteCode/${encodeURIComponent(instance)}?groupJid=${encodeURIComponent(groupJid)}`,
+  });
+}
+
+// Revoga o link atual e gera um novo (invalida qualquer link compartilhado).
+export async function revokeGroupInviteCode(
+  instance: string,
+  groupJid: string,
+): Promise<GroupInvite> {
+  assertGroupJid(groupJid);
+  return evolutionRequest<GroupInvite>({
+    method: "PUT",
+    path: `/group/revokeInviteCode/${encodeURIComponent(instance)}?groupJid=${encodeURIComponent(groupJid)}`,
+  });
+}
+
 export async function fetchParticipants(
   instance: string,
   groupJid: string,

@@ -126,28 +126,6 @@ export async function updateGroupDescription(
   });
 }
 
-// Group-level permission settings:
-//  - announcement / not_announcement → só admins enviam mensagens (ou todos)
-//  - locked / unlocked              → só admins editam infos do grupo (ou todos)
-export type GroupSettingAction =
-  | "announcement"
-  | "not_announcement"
-  | "locked"
-  | "unlocked";
-
-export async function updateGroupSetting(
-  instance: string,
-  groupJid: string,
-  action: GroupSettingAction,
-): Promise<unknown> {
-  assertGroupJid(groupJid);
-  return evolutionRequest({
-    method: "PUT",
-    path: `/group/updateSetting/${encodeURIComponent(instance)}?groupJid=${encodeURIComponent(groupJid)}`,
-    body: { action },
-  });
-}
-
 export async function updateGroupPicture(
   instance: string,
   groupJid: string,

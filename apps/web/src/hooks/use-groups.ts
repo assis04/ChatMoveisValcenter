@@ -167,15 +167,11 @@ export async function patchGroup(input: {
   subject?: string;
   description?: string;
   picture?: string;
-  announce?: boolean;
-  restrict?: boolean;
 }): Promise<void> {
   const body: Record<string, unknown> = {};
   if (input.subject !== undefined) body.subject = input.subject;
   if (input.description !== undefined) body.description = input.description;
   if (input.picture !== undefined) body.picture = input.picture;
-  if (input.announce !== undefined) body.announce = input.announce;
-  if (input.restrict !== undefined) body.restrict = input.restrict;
 
   await api(`/api/groups/${encodeURIComponent(input.jid)}?inbox_id=${input.inbox_id}`, {
     method: "PATCH",

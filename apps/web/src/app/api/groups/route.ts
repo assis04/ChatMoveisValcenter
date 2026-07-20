@@ -4,6 +4,7 @@ import { assertSameOrigin } from "@/lib/security/origin-guard";
 import { requireConnectedInstance } from "@/lib/chatwoot/instances";
 import { createGroup, fetchAllGroups } from "@/lib/evolution/groups";
 import { handleApiError } from "@/lib/api/errors";
+import { getRedis } from "@/lib/redis";
 import type { EvolutionGroup } from "@/types";
 
 export const runtime = "nodejs";
@@ -30,6 +31,45 @@ function cacheKey(instance: string, includeParticipants: boolean): CacheKey {
   return `${instance}|${includeParticipants ? 1 : 0}`;
 }
 
+// ─── Camada L2: Redis (persistente entre deploys/restarts) ────
+// O cache em memoria (L1) morre a cada deploy do container. O Redis persiste,
+// entao apos aquecer UMA vez, todo deploy futuro serve na hora em vez de
+// esperar os ~3min do fetchAllGroups.
+const REDIS_TTL_S = 24 * 3600; // 24h; revalidamos em background bem antes disso
+
+function redisKey(key: CacheKey): string {
+  return `cmv:groups:${key}`;
+}
+
+async function readRedis(key: CacheKey): Promise<CacheEntry | null> {
+  const r = getRedis();
+  if (!r) return null;
+  try {
+    const raw = await r.get(redisKey(key));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      value: EvolutionGroup[];
+      fetchedAt: number;
+    };
+    if (!Array.isArray(parsed.value) || !parsed.fetchedAt) return null;
+    return { value: parsed.value, fetchedAt: parsed.fetchedAt };
+  } catch {
+    return null;
+  }
+}
+
+function writeRedis(
+  key: CacheKey,
+  value: EvolutionGroup[],
+  fetchedAt: number,
+): void {
+  const r = getRedis();
+  if (!r) return;
+  void r
+    .set(redisKey(key), JSON.stringify({ value, fetchedAt }), "EX", REDIS_TTL_S)
+    .catch(() => {});
+}
+
 function refreshGroups(
   key: CacheKey,
   instance: string,
@@ -40,7 +80,9 @@ function refreshGroups(
 
   const inflight = fetchAllGroups(instance, includeParticipants)
     .then((value) => {
-      groupsCache.set(key, { value, fetchedAt: Date.now() });
+      const fetchedAt = Date.now();
+      groupsCache.set(key, { value, fetchedAt });
+      writeRedis(key, value, fetchedAt); // persiste no L2 pra sobreviver a deploys
       return value;
     })
     .catch((err) => {
@@ -60,23 +102,33 @@ function refreshGroups(
 
 type GroupsResult = { groups: EvolutionGroup[]; warming: boolean };
 
-function getGroupsCached(
+async function getGroups(
   instance: string,
   includeParticipants: boolean,
-): GroupsResult {
+): Promise<GroupsResult> {
   const key = cacheKey(instance, includeParticipants);
-  const entry = groupsCache.get(key);
+  let entry = groupsCache.get(key);
 
-  // Cold (nunca teve fetch bem-sucedido): NAO bloqueia. Dispara o fetch em
-  // background e devolve warming=true na hora. Antes isso travava a tela por
-  // 125s+ (ex: logo apos um deploy, que zera o cache em memoria); agora a UI
-  // abre instantaneamente e os grupos aparecem sozinhos quando ficam prontos.
+  // L1 (memoria) frio -> tenta o L2 (Redis). E isto que deixa o app rapido logo
+  // apos um deploy: o container novo perde o cache em memoria, mas o Redis
+  // persiste, entao servimos na hora em vez de esperar os ~3min do fetch.
+  if (!entry || entry.fetchedAt === 0) {
+    const fromRedis = await readRedis(key);
+    if (fromRedis) {
+      groupsCache.set(key, fromRedis);
+      entry = fromRedis;
+    }
+  }
+
+  // Cold em L1 E L2 (primeirissima carga na vida): NAO bloqueia. Dispara em
+  // background e devolve warming=true; a UI mostra "Preparando..." e os grupos
+  // aparecem sozinhos. Depois disso o Redis sempre tem — nunca mais espera.
   if (!entry || entry.fetchedAt === 0) {
     void refreshGroups(key, instance, includeParticipants).catch(() => {});
     return { groups: entry?.value ?? [], warming: true };
   }
 
-  // Tem cache -> serve na hora. Se velho, revalida em background (nao bloqueia).
+  // Tem dado -> serve na hora. Se velho, revalida em background (nao bloqueia).
   if (Date.now() - entry.fetchedAt > GROUPS_FRESH_MS && !entry.inflight) {
     void refreshGroups(key, instance, includeParticipants).catch(() => {});
   }
@@ -86,6 +138,12 @@ function getGroupsCached(
 function invalidateGroupsCache(instance: string): void {
   for (const k of groupsCache.keys()) {
     if (k.startsWith(`${instance}|`)) groupsCache.delete(k);
+  }
+  const r = getRedis();
+  if (r) {
+    void r
+      .del(redisKey(`${instance}|0`), redisKey(`${instance}|1`))
+      .catch(() => {});
   }
 }
 
@@ -113,7 +171,7 @@ export async function GET(req: NextRequest) {
     const force = req.nextUrl.searchParams.get("refresh") === "true";
     if (force) invalidateGroupsCache(lookup.mapping.instance_name);
 
-    const { groups, warming } = getGroupsCached(
+    const { groups, warming } = await getGroups(
       lookup.mapping.instance_name,
       includeParticipants,
     );

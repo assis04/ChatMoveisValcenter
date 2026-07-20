@@ -82,13 +82,14 @@ export async function fetchGroupInviteCode(
 }
 
 // Revoga o link atual e gera um novo (invalida qualquer link compartilhado).
+// Método POST nesta build (não PUT).
 export async function revokeGroupInviteCode(
   instance: string,
   groupJid: string,
 ): Promise<GroupInvite> {
   assertGroupJid(groupJid);
   return evolutionRequest<GroupInvite>({
-    method: "PUT",
+    method: "POST",
     path: `/group/revokeInviteCode/${encodeURIComponent(instance)}?groupJid=${encodeURIComponent(groupJid)}`,
   });
 }
@@ -118,7 +119,7 @@ export async function updateGroupParticipants(
 ): Promise<unknown> {
   assertGroupJid(input.groupJid);
   return evolutionRequest({
-    method: "PUT",
+    method: "POST",
     path: `/group/updateParticipant/${encodeURIComponent(input.instance)}?groupJid=${encodeURIComponent(input.groupJid)}`,
     body: {
       action: input.action,
@@ -134,7 +135,7 @@ export async function updateGroupSubject(
 ): Promise<unknown> {
   assertGroupJid(groupJid);
   return evolutionRequest({
-    method: "PUT",
+    method: "POST",
     path: `/group/updateGroupSubject/${encodeURIComponent(instance)}?groupJid=${encodeURIComponent(groupJid)}`,
     body: { subject },
   });
@@ -147,9 +148,32 @@ export async function updateGroupDescription(
 ): Promise<unknown> {
   assertGroupJid(groupJid);
   return evolutionRequest({
-    method: "PUT",
+    method: "POST",
     path: `/group/updateGroupDescription/${encodeURIComponent(instance)}?groupJid=${encodeURIComponent(groupJid)}`,
     body: { description },
+  });
+}
+
+// Permissões do grupo (só surtem efeito se a instância for admin):
+//  - announcement / not_announcement → só admins enviam mensagens (ou todos)
+//  - locked / unlocked              → só admins editam infos do grupo (ou todos)
+// NOTA: nesta build do Evolution (evoapicloud v2.3.7) o método é POST, não PUT.
+export type GroupSettingAction =
+  | "announcement"
+  | "not_announcement"
+  | "locked"
+  | "unlocked";
+
+export async function updateGroupSetting(
+  instance: string,
+  groupJid: string,
+  action: GroupSettingAction,
+): Promise<unknown> {
+  assertGroupJid(groupJid);
+  return evolutionRequest({
+    method: "POST",
+    path: `/group/updateSetting/${encodeURIComponent(instance)}?groupJid=${encodeURIComponent(groupJid)}`,
+    body: { action },
   });
 }
 
@@ -160,7 +184,7 @@ export async function updateGroupPicture(
 ): Promise<unknown> {
   assertGroupJid(groupJid);
   return evolutionRequest({
-    method: "PUT",
+    method: "POST",
     path: `/group/updateGroupPicture/${encodeURIComponent(instance)}?groupJid=${encodeURIComponent(groupJid)}`,
     body: { image },
   });

@@ -7,6 +7,7 @@ import {
   leaveGroup,
   updateGroupDescription,
   updateGroupPicture,
+  updateGroupSetting,
   updateGroupSubject,
 } from "@/lib/evolution/groups";
 import { handleApiError } from "@/lib/api/errors";
@@ -20,11 +21,20 @@ const patchBody = z
     description: z.string().trim().max(512).optional(),
     // Picture must be a URL — agents upload to object storage first, then
     // pass the URL here. Base64 inline would blow the 1MB default body limit.
+    // (Upload por arquivo/base64 vai pela rota dedicada /picture.)
     picture: z.string().url().max(2048).optional(),
+    // Permissões do grupo (só surtem efeito se a instância for admin):
+    announce: z.boolean().optional(), // true = só admins enviam mensagens
+    restrict: z.boolean().optional(), // true = só admins editam infos
   })
   .refine(
-    (v) => v.subject || v.description !== undefined || v.picture,
-    "informe ao menos um campo: subject, description ou picture",
+    (v) =>
+      v.subject ||
+      v.description !== undefined ||
+      v.picture ||
+      v.announce !== undefined ||
+      v.restrict !== undefined,
+    "informe ao menos um campo: subject, description, picture, announce ou restrict",
   );
 
 type Params = { params: Promise<{ jid: string }> };
@@ -67,6 +77,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (input.description !== undefined)
       await updateGroupDescription(instance, jid, input.description);
     if (input.picture) await updateGroupPicture(instance, jid, input.picture);
+    if (input.announce !== undefined)
+      await updateGroupSetting(
+        instance,
+        jid,
+        input.announce ? "announcement" : "not_announcement",
+      );
+    if (input.restrict !== undefined)
+      await updateGroupSetting(
+        instance,
+        jid,
+        input.restrict ? "locked" : "unlocked",
+      );
 
     return NextResponse.json({ inbox_id: inboxId, jid, ok: true });
   } catch (err) {

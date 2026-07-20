@@ -1,15 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
+  Camera,
   Check,
   Copy,
   Crown,
   Link2,
   Loader2,
+  Lock,
   LogOut,
+  Megaphone,
   MoreVertical,
   Pencil,
   UserMinus,
@@ -23,6 +26,7 @@ import {
   leaveGroup,
   patchGroup,
   revokeGroupInvite,
+  updateGroupPhoto,
   updateParticipants,
   useGroup,
   useGroupInvite,
@@ -53,6 +57,8 @@ export function GroupMembersPanel({
   const [editDesc, setEditDesc] = useState("");
   const [copied, setCopied] = useState(false);
   const [revoking, setRevoking] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const sortedParticipants = useMemo(() => {
     const list = group?.participants ?? [];
@@ -181,16 +187,71 @@ export function GroupMembersPanel({
     }
   };
 
+  const applySetting = async (
+    patch: { announce?: boolean; restrict?: boolean },
+    tag: string,
+  ) => {
+    setPending(tag);
+    setActionError(null);
+    try {
+      await patchGroup({ inbox_id: inboxId, jid, ...patch });
+      await reload();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "erro");
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const onPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite re-selecionar o mesmo arquivo
+    if (!file) return;
+    setUploadingPhoto(true);
+    setActionError(null);
+    try {
+      const image = await fileToResizedBase64(file, 512);
+      await updateGroupPhoto({ inbox_id: inboxId, jid, image });
+      await reload();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "erro ao enviar foto");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   return (
     <div className="flex h-full flex-col">
       {onBack ? <BackBar onBack={onBack} /> : null}
 
       <header className="border-b border-border/60">
         <div className="flex items-start gap-3 p-4">
-          <Avatar
-            name={group.subject}
-            src={group.pictureUrl ?? undefined}
-            size={44}
+          <button
+            type="button"
+            onClick={() => photoInputRef.current?.click()}
+            disabled={uploadingPhoto}
+            className="relative shrink-0 rounded-full"
+            title="Trocar foto do grupo"
+          >
+            <Avatar
+              name={group.subject}
+              src={group.pictureUrl ?? undefined}
+              size={44}
+            />
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background">
+              {uploadingPhoto ? (
+                <Loader2 className="h-2.5 w-2.5 animate-spin text-muted-foreground" />
+              ) : (
+                <Camera className="h-2.5 w-2.5 text-muted-foreground" />
+              )}
+            </span>
+          </button>
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            onChange={onPhotoChange}
+            className="hidden"
           />
           <div className="min-w-0 flex-1">
             {editing ? (
@@ -247,9 +308,6 @@ export function GroupMembersPanel({
                 <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Users className="h-3 w-3" />
                   {sortedParticipants.length} participantes
-                  {group.announce ? (
-                    <span className="ml-1">• só admins enviam</span>
-                  ) : null}
                 </p>
                 {group.desc ? (
                   <p className="mt-2 line-clamp-3 text-xs text-muted-foreground">
@@ -261,6 +319,30 @@ export function GroupMembersPanel({
           </div>
         </div>
 
+        <div className="divide-y divide-border/40 border-t border-border/40">
+          <SettingRow
+            icon={<Megaphone className="h-3.5 w-3.5 text-muted-foreground" />}
+            label="Só admins enviam"
+            hint="Cliente e equipe só leem; apenas admins publicam."
+            on={group.announce ?? false}
+            busy={pending === "announce"}
+            disabled={pending !== null}
+            onToggle={() =>
+              applySetting({ announce: !group.announce }, "announce")
+            }
+          />
+          <SettingRow
+            icon={<Lock className="h-3.5 w-3.5 text-muted-foreground" />}
+            label="Só admins editam infos"
+            hint="Trava nome, foto e descrição do grupo."
+            on={group.restrict ?? false}
+            busy={pending === "restrict"}
+            disabled={pending !== null}
+            onToggle={() =>
+              applySetting({ restrict: !group.restrict }, "restrict")
+            }
+          />
+        </div>
       </header>
 
       <div className="border-b border-border/40 px-4 py-3">
@@ -419,6 +501,88 @@ function BackBar({ onBack }: { onBack: () => void }) {
     >
       <ArrowLeft className="h-3.5 w-3.5" /> Voltar aos grupos
     </button>
+  );
+}
+
+// Redimensiona a imagem no navegador (canvas) e devolve um data URL JPEG —
+// mantém o upload pequeno (~dezenas de KB) mesmo pra fotos grandes.
+async function fileToResizedBase64(
+  file: File,
+  maxSize: number,
+): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("não consegui ler o arquivo"));
+    reader.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new window.Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("imagem inválida"));
+    el.src = dataUrl;
+  });
+  const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas indisponível");
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL("image/jpeg", 0.85);
+}
+
+function SettingRow({
+  icon,
+  label,
+  hint,
+  on,
+  busy,
+  disabled,
+  onToggle,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  hint: string;
+  on: boolean;
+  busy: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+      <div className="flex items-start gap-2.5">
+        <span className="mt-0.5">{icon}</span>
+        <div className="min-w-0">
+          <div className="text-xs font-medium">{label}</div>
+          <div className="text-[11px] text-muted-foreground">{hint}</div>
+        </div>
+      </div>
+      <button
+        role="switch"
+        aria-checked={on}
+        aria-label={label}
+        onClick={onToggle}
+        disabled={disabled}
+        className={
+          "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-40 " +
+          (on ? "bg-primary" : "bg-muted")
+        }
+      >
+        {busy ? (
+          <Loader2 className="mx-auto h-3 w-3 animate-spin text-white" />
+        ) : (
+          <span
+            className={
+              "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform " +
+              (on ? "translate-x-4" : "translate-x-0.5")
+            }
+          />
+        )}
+      </button>
+    </div>
   );
 }
 

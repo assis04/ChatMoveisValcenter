@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Loader2, Plus, Search, Users } from "lucide-react";
+import { ChevronRight, Loader2, Plus, Search, Users } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Avatar } from "@/components/ui/Avatar";
 import { useGroups, useInboxes } from "@/hooks/use-groups";
 import { CreateGroupModal } from "./CreateGroupModal";
+import { GroupMembersPanel } from "./GroupMembersPanel";
 
 export function GroupsListView() {
   const {
@@ -30,6 +31,7 @@ export function GroupsListView() {
 
   const [query, setQuery] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [selectedJid, setSelectedJid] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (!groups) return [];
@@ -37,6 +39,21 @@ export function GroupsListView() {
     if (!q) return groups;
     return groups.filter((g) => g.subject.toLowerCase().includes(q));
   }, [groups, query]);
+
+  // Clicou num grupo -> abre o painel de membros ali mesmo (voltar retorna à
+  // lista e a recarrega, caso nome tenha mudado ou o grupo tenha sido deixado).
+  if (selectedJid && effectiveInboxId) {
+    return (
+      <GroupMembersPanel
+        inboxId={effectiveInboxId}
+        jid={selectedJid}
+        onBack={() => {
+          setSelectedJid(null);
+          reload();
+        }}
+      />
+    );
+  }
 
   return (
     <>
@@ -125,22 +142,25 @@ export function GroupsListView() {
               ) : (
                 <ul className="divide-y divide-border/40 rounded-lg border border-border/60">
                   {filtered.map((g) => (
-                    <li
-                      key={g.id}
-                      className="flex items-center gap-3 px-3 py-2.5"
-                    >
-                      <Avatar
-                        name={g.subject}
-                        src={g.pictureUrl ?? undefined}
-                        size={36}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm">{g.subject}</div>
-                        <div className="truncate text-xs text-muted-foreground">
-                          {g.size ? `${g.size} membros` : "—"}
-                          {g.desc ? ` • ${g.desc}` : ""}
+                    <li key={g.id}>
+                      <button
+                        onClick={() => setSelectedJid(g.id)}
+                        className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/30"
+                      >
+                        <Avatar
+                          name={g.subject}
+                          src={g.pictureUrl ?? undefined}
+                          size={36}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm">{g.subject}</div>
+                          <div className="truncate text-xs text-muted-foreground">
+                            {g.size ? `${g.size} membros` : "—"}
+                            {g.desc ? ` • ${g.desc}` : ""}
+                          </div>
                         </div>
-                      </div>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -155,9 +175,11 @@ export function GroupsListView() {
         onClose={() => setCreateOpen(false)}
         inboxes={connected}
         {...(effectiveInboxId !== null ? { initialInboxId: effectiveInboxId } : {})}
-        onCreated={() => {
+        onCreated={(groupJid) => {
           setCreateOpen(false);
           reload();
+          // Já entra no painel do grupo recém-criado pra adicionar/configurar.
+          setSelectedJid(groupJid);
         }}
       />
     </>

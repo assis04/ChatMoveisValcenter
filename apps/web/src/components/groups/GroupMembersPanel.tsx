@@ -2,22 +2,30 @@
 
 import { useMemo, useState } from "react";
 import {
+  ArrowLeft,
   ArrowUpRight,
+  Check,
   Crown,
   Loader2,
+  Lock,
   LogOut,
+  Megaphone,
   MoreVertical,
+  Pencil,
   UserMinus,
   UserPlus,
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { Avatar } from "@/components/ui/Avatar";
 import {
   leaveGroup,
+  patchGroup,
   updateParticipants,
   useGroup,
 } from "@/hooks/use-groups";
+import { useResolvedContacts } from "@/hooks/use-resolved-contacts";
 import { ContactPicker } from "./ContactPicker";
 import type { ContactSuggestion } from "@/hooks/use-contacts-search";
 import { formatBrPhone } from "@/lib/utils";
@@ -25,14 +33,22 @@ import { formatBrPhone } from "@/lib/utils";
 interface GroupMembersPanelProps {
   inboxId: number;
   jid: string;
+  onBack?: () => void;
 }
 
-export function GroupMembersPanel({ inboxId, jid }: GroupMembersPanelProps) {
+export function GroupMembersPanel({
+  inboxId,
+  jid,
+  onBack,
+}: GroupMembersPanelProps) {
   const { data: group, loading, error, reload } = useGroup(inboxId, jid);
   const [addOpen, setAddOpen] = useState(false);
   const [picked, setPicked] = useState<ContactSuggestion[]>([]);
   const [pending, setPending] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editSubject, setEditSubject] = useState("");
+  const [editDesc, setEditDesc] = useState("");
 
   const sortedParticipants = useMemo(() => {
     const list = group?.participants ?? [];
@@ -43,6 +59,12 @@ export function GroupMembersPanel({ inboxId, jid }: GroupMembersPanelProps) {
     });
   }, [group]);
 
+  const phones = useMemo(
+    () => sortedParticipants.map((p) => p.id.split("@")[0] ?? ""),
+    [sortedParticipants],
+  );
+  const resolved = useResolvedContacts(phones);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-10 text-sm text-muted-foreground">
@@ -52,8 +74,11 @@ export function GroupMembersPanel({ inboxId, jid }: GroupMembersPanelProps) {
   }
   if (error || !group) {
     return (
-      <div className="m-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
-        {error ?? "Grupo não encontrado"}
+      <div className="flex h-full flex-col">
+        {onBack ? <BackBar onBack={onBack} /> : null}
+        <div className="m-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+          {error ?? "Grupo não encontrado"}
+        </div>
       </div>
     );
   }
@@ -65,12 +90,7 @@ export function GroupMembersPanel({ inboxId, jid }: GroupMembersPanelProps) {
     setPending(action);
     setActionError(null);
     try {
-      await updateParticipants({
-        inbox_id: inboxId,
-        jid,
-        action,
-        participants,
-      });
+      await updateParticipants({ inbox_id: inboxId, jid, action, participants });
       await reload();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "erro");
@@ -102,30 +122,154 @@ export function GroupMembersPanel({ inboxId, jid }: GroupMembersPanelProps) {
     }
   };
 
+  const startEdit = () => {
+    setEditSubject(group.subject);
+    setEditDesc(group.desc ?? "");
+    setActionError(null);
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    const patch: { subject?: string; description?: string } = {};
+    const s = editSubject.trim();
+    const d = editDesc.trim();
+    if (s && s !== group.subject) patch.subject = s;
+    if (d !== (group.desc ?? "")) patch.description = d;
+    if (patch.subject === undefined && patch.description === undefined) {
+      setEditing(false);
+      return;
+    }
+    setPending("edit");
+    setActionError(null);
+    try {
+      await patchGroup({ inbox_id: inboxId, jid, ...patch });
+      await reload();
+      setEditing(false);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "erro ao salvar");
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const applySetting = async (
+    patch: { announce?: boolean; restrict?: boolean },
+    tag: string,
+  ) => {
+    setPending(tag);
+    setActionError(null);
+    try {
+      await patchGroup({ inbox_id: inboxId, jid, ...patch });
+      await reload();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "erro");
+    } finally {
+      setPending(null);
+    }
+  };
+
   return (
     <div className="flex h-full flex-col">
-      <header className="border-b border-border/60 p-4">
-        <div className="flex items-start gap-3">
+      {onBack ? <BackBar onBack={onBack} /> : null}
+
+      <header className="border-b border-border/60">
+        <div className="flex items-start gap-3 p-4">
           <Avatar
             name={group.subject}
             src={group.pictureUrl ?? undefined}
             size={44}
           />
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-base font-medium tracking-tight">
-              {group.subject}
-            </h1>
-            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Users className="h-3 w-3" />
-              {sortedParticipants.length} participantes
-              {group.announce ? <span className="ml-2">• só admins enviam</span> : null}
-            </p>
+            {editing ? (
+              <div className="space-y-2">
+                <Input
+                  value={editSubject}
+                  onChange={(e) => setEditSubject(e.target.value)}
+                  maxLength={100}
+                  placeholder="Nome do grupo"
+                />
+                <Input
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  maxLength={512}
+                  placeholder="Descrição (opcional)"
+                />
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditing(false)}
+                    disabled={pending === "edit"}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={saveEdit}
+                    disabled={pending === "edit"}
+                  >
+                    {pending === "edit" ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Check className="h-3.5 w-3.5" />
+                    )}
+                    Salvar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-1.5">
+                  <h1 className="truncate text-base font-medium tracking-tight">
+                    {group.subject}
+                  </h1>
+                  <button
+                    onClick={startEdit}
+                    className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                    aria-label="Editar grupo"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Users className="h-3 w-3" />
+                  {sortedParticipants.length} participantes
+                </p>
+                {group.desc ? (
+                  <p className="mt-2 line-clamp-3 text-xs text-muted-foreground">
+                    {group.desc}
+                  </p>
+                ) : null}
+              </>
+            )}
           </div>
         </div>
-        {group.desc ? (
-          <p className="mt-3 line-clamp-3 text-xs text-muted-foreground">
-            {group.desc}
-          </p>
+
+        {!editing ? (
+          <div className="divide-y divide-border/40 border-t border-border/40">
+            <SettingRow
+              icon={<Megaphone className="h-3.5 w-3.5 text-muted-foreground" />}
+              label="Só admins enviam"
+              hint="Cliente e equipe só leem; apenas admins publicam."
+              on={group.announce ?? false}
+              busy={pending === "announce"}
+              disabled={pending !== null}
+              onToggle={() =>
+                applySetting({ announce: !group.announce }, "announce")
+              }
+            />
+            <SettingRow
+              icon={<Lock className="h-3.5 w-3.5 text-muted-foreground" />}
+              label="Só admins editam infos"
+              hint="Trava nome, foto e descrição do grupo."
+              on={group.restrict ?? false}
+              busy={pending === "restrict"}
+              disabled={pending !== null}
+              onToggle={() =>
+                applySetting({ restrict: !group.restrict }, "restrict")
+              }
+            />
+          </div>
         ) : null}
       </header>
 
@@ -133,7 +277,11 @@ export function GroupMembersPanel({ inboxId, jid }: GroupMembersPanelProps) {
         <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Participantes
         </span>
-        <Button size="sm" variant="secondary" onClick={() => setAddOpen((v) => !v)}>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => setAddOpen((v) => !v)}
+        >
           <UserPlus className="h-3.5 w-3.5" />
           {addOpen ? "Cancelar" : "Adicionar"}
         </Button>
@@ -150,7 +298,11 @@ export function GroupMembersPanel({ inboxId, jid }: GroupMembersPanelProps) {
             <Button variant="ghost" size="sm" onClick={() => setAddOpen(false)}>
               Cancelar
             </Button>
-            <Button size="sm" onClick={handleAdd} disabled={picked.length === 0 || pending === "add"}>
+            <Button
+              size="sm"
+              onClick={handleAdd}
+              disabled={picked.length === 0 || pending === "add"}
+            >
               {pending === "add" ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
@@ -171,13 +323,19 @@ export function GroupMembersPanel({ inboxId, jid }: GroupMembersPanelProps) {
       <ul className="flex-1 divide-y divide-border/40 overflow-y-auto">
         {sortedParticipants.map((p) => {
           const phone = p.id.split("@")[0] ?? "";
+          const info = resolved[phone.replace(/\D/g, "")];
+          const display = info?.name ?? formatBrPhone(phone);
           const isBusy = pending === p.id;
           return (
             <li key={p.id} className="flex items-center gap-3 px-4 py-2.5">
-              <Avatar name={phone} size={32} />
+              <Avatar
+                name={info?.name ?? phone}
+                src={info?.thumbnail ?? undefined}
+                size={32}
+              />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 text-sm">
-                  <span className="truncate">{formatBrPhone(phone)}</span>
+                  <span className="truncate">{display}</span>
                   {p.admin === "superadmin" ? (
                     <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
                       <Crown className="h-2.5 w-2.5" /> dono
@@ -188,6 +346,11 @@ export function GroupMembersPanel({ inboxId, jid }: GroupMembersPanelProps) {
                     </span>
                   ) : null}
                 </div>
+                {info ? (
+                  <div className="truncate text-[11px] text-muted-foreground">
+                    {formatBrPhone(phone)}
+                  </div>
+                ) : null}
               </div>
               <ParticipantMenu
                 isAdmin={p.admin !== null}
@@ -214,6 +377,69 @@ export function GroupMembersPanel({ inboxId, jid }: GroupMembersPanelProps) {
           Sair do grupo
         </Button>
       </footer>
+    </div>
+  );
+}
+
+function BackBar({ onBack }: { onBack: () => void }) {
+  return (
+    <button
+      onClick={onBack}
+      className="flex items-center gap-1.5 border-b border-border/40 px-4 py-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <ArrowLeft className="h-3.5 w-3.5" /> Voltar aos grupos
+    </button>
+  );
+}
+
+function SettingRow({
+  icon,
+  label,
+  hint,
+  on,
+  busy,
+  disabled,
+  onToggle,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  hint: string;
+  on: boolean;
+  busy: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+      <div className="flex items-start gap-2.5">
+        <span className="mt-0.5">{icon}</span>
+        <div className="min-w-0">
+          <div className="text-xs font-medium">{label}</div>
+          <div className="text-[11px] text-muted-foreground">{hint}</div>
+        </div>
+      </div>
+      <button
+        role="switch"
+        aria-checked={on}
+        aria-label={label}
+        onClick={onToggle}
+        disabled={disabled}
+        className={
+          "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-40 " +
+          (on ? "bg-primary" : "bg-muted")
+        }
+      >
+        {busy ? (
+          <Loader2 className="mx-auto h-3 w-3 animate-spin text-white" />
+        ) : (
+          <span
+            className={
+              "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform " +
+              (on ? "translate-x-4" : "translate-x-0.5")
+            }
+          />
+        )}
+      </button>
     </div>
   );
 }
@@ -249,10 +475,7 @@ function ParticipantMenu({
       </button>
       {open ? (
         <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={() => setOpen(false)}
-          />
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-full z-20 mt-1 min-w-[160px] overflow-hidden rounded-md border border-border bg-background shadow-lg">
             {isAdmin ? (
               <button

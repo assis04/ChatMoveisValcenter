@@ -1,13 +1,21 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronRight, Loader2, Plus, Search, Users } from "lucide-react";
+import {
+  ChevronRight,
+  LayoutTemplate,
+  Loader2,
+  Plus,
+  Search,
+  Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Avatar } from "@/components/ui/Avatar";
 import { useGroups, useInboxes } from "@/hooks/use-groups";
 import { CreateGroupModal } from "./CreateGroupModal";
 import { GroupMembersPanel } from "./GroupMembersPanel";
+import { GroupTemplatesManager } from "./GroupTemplatesManager";
 
 export function GroupsListView() {
   const {
@@ -32,6 +40,7 @@ export function GroupsListView() {
   const [query, setQuery] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedJid, setSelectedJid] = useState<string | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const filtered = useMemo(() => {
     if (!groups) return [];
@@ -39,6 +48,10 @@ export function GroupsListView() {
     if (!q) return groups;
     return groups.filter((g) => g.subject.toLowerCase().includes(q));
   }, [groups, query]);
+
+  if (showTemplates) {
+    return <GroupTemplatesManager onBack={() => setShowTemplates(false)} />;
+  }
 
   // Clicou num grupo -> abre o painel de membros ali mesmo (voltar retorna à
   // lista e a recarrega, caso nome tenha mudado ou o grupo tenha sido deixado).
@@ -67,12 +80,17 @@ export function GroupsListView() {
               Criar e gerenciar grupos das suas conexões
             </p>
           </div>
-          <Button
-            onClick={() => setCreateOpen(true)}
-            disabled={connected.length === 0}
-          >
-            <Plus className="h-3.5 w-3.5" /> Novo grupo
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => setShowTemplates(true)}>
+              <LayoutTemplate className="h-3.5 w-3.5" /> Modelos
+            </Button>
+            <Button
+              onClick={() => setCreateOpen(true)}
+              disabled={connected.length === 0}
+            >
+              <Plus className="h-3.5 w-3.5" /> Novo grupo
+            </Button>
+          </div>
         </header>
 
         {inboxesLoading ? (

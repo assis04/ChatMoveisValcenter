@@ -93,6 +93,24 @@ export interface EvolutionGroup {
 
 export type ParticipantAction = "add" | "remove" | "promote" | "demote";
 
+// ─── Modelos de grupo (time padrão + nome-base) ───────────────
+export interface GroupTemplateParticipant {
+  name: string;
+  phone_number: string;
+}
+
+export interface GroupTemplate {
+  id: string;
+  name: string;
+  group_name_base: string;
+  description: string;
+  participants: GroupTemplateParticipant[];
+  announce: boolean;
+  restrict: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // Mapping resolved from Chatwoot inboxes ↔ Evolution instances.
 // Chatwoot.nameInbox on the Evolution instance is the join key.
 export interface InboxInstanceMapping {

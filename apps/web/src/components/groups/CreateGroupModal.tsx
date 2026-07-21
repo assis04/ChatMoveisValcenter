@@ -5,9 +5,11 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ContactPicker } from "./ContactPicker";
-import { createGroup } from "@/hooks/use-groups";
+import { toSuggestions } from "./GroupTemplatesManager";
+import { createGroup, patchGroup } from "@/hooks/use-groups";
+import { useTemplates } from "@/hooks/use-templates";
 import type { ContactSuggestion } from "@/hooks/use-contacts-search";
-import type { InboxInstanceMapping } from "@/types";
+import type { GroupTemplate, InboxInstanceMapping } from "@/types";
 import { Loader2 } from "lucide-react";
 
 interface CreateGroupModalProps {
@@ -34,6 +36,20 @@ export function CreateGroupModal({
   const [participants, setParticipants] = useState<ContactSuggestion[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { data: templates } = useTemplates();
+  const [templateId, setTemplateId] = useState<string>("");
+  const [applied, setApplied] = useState<GroupTemplate | null>(null);
+
+  const applyTemplate = (id: string) => {
+    setTemplateId(id);
+    const t = templates.find((x) => x.id === id) ?? null;
+    setApplied(t);
+    if (t) {
+      setSubject(t.group_name_base);
+      setDescription(t.description);
+      setParticipants(toSuggestions(t.participants));
+    }
+  };
 
   const reset = () => {
     setSubject("");
@@ -41,6 +57,8 @@ export function CreateGroupModal({
     setParticipants([]);
     setError(null);
     setSubmitting(false);
+    setTemplateId("");
+    setApplied(null);
   };
 
   const handleClose = () => {
@@ -72,6 +90,19 @@ export function CreateGroupModal({
         participants: participants.map((p) => p.phone_number),
         ...(description.trim() ? { description: description.trim() } : {}),
       });
+      // Aplica permissões padrão do modelo (best-effort; não bloqueia a criação).
+      if (applied && (applied.announce || applied.restrict)) {
+        try {
+          await patchGroup({
+            inbox_id: inboxId,
+            jid: group.id,
+            ...(applied.announce ? { announce: true } : {}),
+            ...(applied.restrict ? { restrict: true } : {}),
+          });
+        } catch {
+          // grupo já foi criado; permissão é secundária
+        }
+      }
       onCreated(group.id, inboxId);
       reset();
     } catch (err) {
@@ -104,6 +135,31 @@ export function CreateGroupModal({
       }
     >
       <div className="space-y-5">
+        {templates.length > 0 ? (
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Modelo
+            </label>
+            <select
+              value={templateId}
+              onChange={(e) => applyTemplate(e.target.value)}
+              className="h-9 w-full rounded-md border border-border bg-background/40 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            >
+              <option value="">Começar em branco</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            {applied ? (
+              <p className="mt-1 text-[11px] text-muted-foreground/70">
+                Nome e time preenchidos pelo modelo — ajuste o que precisar.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         {connected.length > 1 ? (
           <div>
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">

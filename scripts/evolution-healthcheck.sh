@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Evolution WhatsApp health-check + auto-recovery (probe INTERNO via docker exec/node)
+# Evolution WhatsApp health-check + auto-recovery (probe INTERNO via docker exec/node).
+# Descobre as instancias DINAMICAMENTE (fetchInstances) — se adapta quando
+# instancias sao adicionadas/removidas, sem precisar editar este script.
 set -uo pipefail
 
 CONTAINER="chatcenter_evolution"
-INSTANCES=("Valcenter_Lucas" "Valcenter_ADM")
 PROBE_NUMBER="5511953437880"
 LOG="/var/log/evolution-healthcheck.log"
 COOLDOWN_FILE="/tmp/evo-hc-last-restart"
@@ -41,6 +42,21 @@ probe(){
 running=$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null || echo "false")
 if [ "$running" != "true" ]; then
   log "CONTAINER FORA DO AR."; restart_container; exit 0
+fi
+
+# Descobre as instancias existentes dinamicamente (nao mais hardcoded).
+mapfile -t INSTANCES < <(timeout 40 docker exec "$CONTAINER" node -e '
+  fetch("http://127.0.0.1:8080/instance/fetchInstances",{headers:{apikey:process.env.AUTHENTICATION_API_KEY}})
+    .then(r=>r.json())
+    .then(d=>{(Array.isArray(d)?d:[]).forEach(i=>{ if(i&&i.name) console.log(i.name) })})
+    .catch(()=>{})
+' 2>/dev/null)
+
+# Sem instancias = API nao respondeu (container up mas Evolution travado) -> recuperar.
+if [ "${#INSTANCES[@]}" -eq 0 ]; then
+  log "SEM INSTANCIAS (Evolution nao respondeu fetchInstances) -> tratando como nao-saudavel"
+  restart_container
+  exit 0
 fi
 
 dead=0

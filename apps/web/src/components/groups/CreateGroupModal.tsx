@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -39,6 +39,17 @@ export function CreateGroupModal({
   const { data: templates } = useTemplates();
   const [templateId, setTemplateId] = useState<string>("");
   const [applied, setApplied] = useState<GroupTemplate | null>(null);
+
+  // O modal fica sempre montado, então o inboxId inicial pode ter nascido null
+  // (inboxes ainda carregando no 1º render). Quando o modal abre e há conexão
+  // conectada, garantimos que uma esteja selecionada — senão, com 1 única
+  // conexão (seletor oculto), travava em "selecione uma conexão".
+  const firstInboxId = connected[0]?.inbox_id ?? null;
+  useEffect(() => {
+    if (open && inboxId === null) {
+      setInboxId(initialInboxId ?? firstInboxId);
+    }
+  }, [open, inboxId, initialInboxId, firstInboxId]);
 
   const applyTemplate = (id: string) => {
     setTemplateId(id);

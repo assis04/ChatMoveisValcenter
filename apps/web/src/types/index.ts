@@ -120,3 +120,19 @@ export interface InboxInstanceMapping {
   instance_id: string;
   connection_status: "open" | "close" | "connecting" | string;
 }
+
+// ─── Spike "visto por agente" ─────────────────────────────────
+export interface ConversationSeenEntry {
+  agent_id: number;
+  agent_name: string;
+  last_seen_at: string;
+}
+
+export interface UnseenConversation {
+  id: number;
+  inbox_id: number;
+  status: string;
+  last_activity_at: number; // epoch seconds
+  contact_name: string;
+  last_message: string;
+}

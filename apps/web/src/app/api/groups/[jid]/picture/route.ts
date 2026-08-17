@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameOrigin } from "@/lib/security/origin-guard";
+import { assertInboxInScope } from "@/lib/security/context-token";
 import { requireConnectedInstance } from "@/lib/chatwoot/instances";
 import { updateGroupPicture } from "@/lib/evolution/groups";
 import { handleApiError } from "@/lib/api/errors";
@@ -25,6 +26,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { jid } = await params;
     const inboxId = Number(req.nextUrl.searchParams.get("inbox_id") ?? "0");
     const input = body.parse(await req.json());
+
+    const scopeDenied = assertInboxInScope(req, inboxId);
+
+    if (scopeDenied) return scopeDenied;
 
     const lookup = await requireConnectedInstance(inboxId);
     if (!lookup.ok) {

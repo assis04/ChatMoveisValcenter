@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameOrigin } from "@/lib/security/origin-guard";
+import { assertInboxInScope } from "@/lib/security/context-token";
 import { requireConnectedInstance } from "@/lib/chatwoot/instances";
 import {
   fetchParticipants,
@@ -25,6 +26,8 @@ export async function GET(req: NextRequest, { params }: Params) {
   try {
     const { jid } = await params;
     const inboxId = Number(req.nextUrl.searchParams.get("inbox_id") ?? "0");
+    const scopeDenied = assertInboxInScope(req, inboxId);
+    if (scopeDenied) return scopeDenied;
     const lookup = await requireConnectedInstance(inboxId);
     if (!lookup.ok) {
       return NextResponse.json({ error: lookup.error }, { status: lookup.status });
@@ -48,6 +51,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { jid } = await params;
     const inboxId = Number(req.nextUrl.searchParams.get("inbox_id") ?? "0");
     const input = body.parse(await req.json());
+
+    const scopeDenied = assertInboxInScope(req, inboxId);
+
+    if (scopeDenied) return scopeDenied;
 
     const lookup = await requireConnectedInstance(inboxId);
     if (!lookup.ok) {

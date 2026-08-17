@@ -4,6 +4,27 @@
 
 const BASE = "/ext";
 
+// Chatwoot hands the iframe a short-lived, signed scope token via `?ctx=`. We
+// capture it once and attach it to every request as `x-cw-ctx`, so the server
+// enforces which WhatsApp numbers this agent may see. Stored in sessionStorage
+// so it survives client-side navigations within the app.
+const CTX_HEADER = "x-cw-ctx";
+const CTX_STORAGE_KEY = "cw_group_ctx";
+
+function ctxToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const fromUrl = new URLSearchParams(window.location.search).get("ctx");
+    if (fromUrl) {
+      window.sessionStorage.setItem(CTX_STORAGE_KEY, fromUrl);
+      return fromUrl;
+    }
+    return window.sessionStorage.getItem(CTX_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export interface ApiOptions {
   method?: string;
   body?: unknown;
@@ -21,9 +42,15 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const ctx = ctxToken();
+  if (ctx) headers[CTX_HEADER] = ctx;
+
   const init: RequestInit = {
     method: options.method ?? "GET",
-    headers: { "Content-Type": "application/json" },
+    headers,
     credentials: "same-origin",
   };
   if (options.body !== undefined) init.body = JSON.stringify(options.body);

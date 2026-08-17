@@ -44,7 +44,7 @@ services:
 
   # ─── Chatwoot (Web) ──────────────────────────────────────────
   chatwoot-web:
-    image: ghcr.io/assis04/chatwoot:qa-idor-fix-e171d67
+    image: ghcr.io/assis04/chatwoot:groups-scope-eac1855b
     container_name: chatcenter_chatwoot_web
     restart: unless-stopped
     depends_on:
@@ -71,7 +71,7 @@ services:
 
   # ─── Chatwoot (Sidekiq — background jobs) ────────────────────
   chatwoot-sidekiq:
-    image: ghcr.io/assis04/chatwoot:qa-idor-fix-e171d67
+    image: ghcr.io/assis04/chatwoot:groups-scope-eac1855b
     container_name: chatcenter_chatwoot_sidekiq
     restart: unless-stopped
     depends_on:

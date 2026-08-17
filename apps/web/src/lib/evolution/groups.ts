@@ -44,16 +44,44 @@ export async function createGroup(
   });
 }
 
+interface EvolutionChat {
+  remoteJid?: string;
+  id?: string;
+  pushName?: string | null;
+  profilePicUrl?: string | null;
+  updatedAt?: string | null;
+}
+
+// A listagem de grupos vem do findChats (le do banco do Evolution, ~200ms) em
+// vez do fetchAllGroups ao vivo do Baileys, que o WhatsApp rate-limita ate
+// travar (5min+) quando o numero passa de ~150 grupos. Detalhe de cada grupo
+// (membros, descricao) continua vindo do findGroupInfos ao abrir o grupo.
 export async function fetchAllGroups(
   instance: string,
-  getParticipants = false,
+  _getParticipants = false,
 ): Promise<EvolutionGroup[]> {
-  const qs = `?getParticipants=${getParticipants ? "true" : "false"}`;
-  return evolutionRequest<EvolutionGroup[]>({
-    path: `/group/fetchAllGroups/${encodeURIComponent(instance)}${qs}`,
-    // fetchAllGroups pode levar 125s+ (ADM passa de 180s); damos folga generosa
-    timeoutMs: 280_000,
+  const chats = await evolutionRequest<EvolutionChat[]>({
+    method: "POST",
+    path: `/chat/findChats/${encodeURIComponent(instance)}`,
+    body: {},
+    timeoutMs: 30_000,
   });
+
+  const list = Array.isArray(chats) ? chats : [];
+  return list
+    .filter((c) => String(c.remoteJid ?? c.id ?? "").endsWith("@g.us"))
+    .sort((a, b) =>
+      String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")),
+    )
+    .map((c) => {
+      const jid = String(c.remoteJid ?? c.id ?? "");
+      const group: EvolutionGroup = {
+        id: jid,
+        subject: c.pushName?.trim() || jid.split("@")[0] || jid,
+        pictureUrl: c.profilePicUrl ?? null,
+      };
+      return group;
+    });
 }
 
 export async function findGroupInfos(

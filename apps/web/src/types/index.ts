@@ -69,7 +69,16 @@ export interface ChatwootDashboardContext {
 
 // ─── WhatsApp Groups via Evolution API ────────────────────────
 export interface EvolutionGroupParticipant {
-  id: string; // <jid>@s.whatsapp.net
+  // `id` é o LID do WhatsApp (ex: "220843074404479@lid") — identificador
+  // interno e anônimo, NÃO um telefone. Nunca formatar como número.
+  id: string;
+  // Telefone real ("5511987428238@s.whatsapp.net") que o Evolution resolve a
+  // partir do LID. É o que exibimos e usamos nas ações. Pode faltar (raro).
+  phoneNumber?: string | null;
+  // pushName + foto do WhatsApp (vêm no /group/participants; nem sempre no
+  // findGroupInfos). Bom fallback quando o número não é contato salvo.
+  name?: string | null;
+  imgUrl?: string | null;
   admin: "superadmin" | "admin" | null;
 }
 

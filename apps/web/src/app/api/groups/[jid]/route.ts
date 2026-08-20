@@ -4,6 +4,7 @@ import { assertSameOrigin } from "@/lib/security/origin-guard";
 import { assertInboxInScope } from "@/lib/security/context-token";
 import { requireConnectedInstance } from "@/lib/chatwoot/instances";
 import {
+  fetchParticipants,
   findGroupInfos,
   leaveGroup,
   updateGroupDescription,
@@ -54,7 +55,18 @@ export async function GET(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: lookup.error }, { status: lookup.status });
     }
 
-    const group = await findGroupInfos(lookup.mapping.instance_name, jid);
+    const instance = lookup.mapping.instance_name;
+    const group = await findGroupInfos(instance, jid);
+    // findGroupInfos devolve participantes enxutos ({ id, phoneNumber, admin }).
+    // O /group/participants traz também name + imgUrl (pushName/foto do
+    // WhatsApp); enriquecemos aqui pra exibir nome/foto mesmo de quem não é
+    // contato salvo. Se falhar, mantemos os participantes do findGroupInfos.
+    try {
+      const rich = await fetchParticipants(instance, jid);
+      if (Array.isArray(rich) && rich.length) group.participants = rich;
+    } catch {
+      // mantém group.participants do findGroupInfos
+    }
     return NextResponse.json({ inbox_id: inboxId, group });
   } catch (err) {
     return handleApiError(err);

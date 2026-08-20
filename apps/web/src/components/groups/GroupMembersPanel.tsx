@@ -36,6 +36,22 @@ import { ContactPicker } from "./ContactPicker";
 import type { ContactSuggestion } from "@/hooks/use-contacts-search";
 import { formatBrPhone } from "@/lib/utils";
 
+// O WhatsApp migrou os membros de grupo pra LID (@lid) — um id interno que NÃO
+// é telefone. O Evolution resolve o telefone real em `phoneNumber`; é ele que
+// exibimos e usamos nas ações. Só tratamos como telefone quando veio de
+// `phoneNumber` ou de um jid real (@s.whatsapp.net / @c.us); um @lid cru nunca
+// deve ser formatado como número (era o que gerava "+22 08 4307...").
+function participantPhone(p: {
+  id: string;
+  phoneNumber?: string | null;
+}): { digits: string; isRealPhone: boolean } {
+  const src = p.phoneNumber ?? p.id ?? "";
+  const digits = (src.split("@")[0] ?? "").replace(/\D/g, "");
+  const isRealPhone =
+    !!p.phoneNumber || /@(s\.whatsapp\.net|c\.us)$/i.test(src);
+  return { digits, isRealPhone };
+}
+
 interface GroupMembersPanelProps {
   inboxId: number;
   jid: string;
@@ -70,7 +86,11 @@ export function GroupMembersPanel({
   }, [group]);
 
   const phones = useMemo(
-    () => sortedParticipants.map((p) => p.id.split("@")[0] ?? ""),
+    () =>
+      sortedParticipants
+        .map((p) => participantPhone(p))
+        .filter((x) => x.isRealPhone)
+        .map((x) => x.digits),
     [sortedParticipants],
   );
   const resolved = useResolvedContacts(phones);
@@ -434,15 +454,19 @@ export function GroupMembersPanel({
 
       <ul className="flex-1 divide-y divide-border/40 overflow-y-auto">
         {sortedParticipants.map((p) => {
-          const phone = p.id.split("@")[0] ?? "";
-          const info = resolved[phone.replace(/\D/g, "")];
-          const display = info?.name ?? formatBrPhone(phone);
+          const { digits: phone, isRealPhone } = participantPhone(p);
+          const info = isRealPhone ? resolved[phone] : undefined;
+          const waName = p.name?.trim() || null;
+          const display =
+            info?.name ??
+            waName ??
+            (isRealPhone ? formatBrPhone(phone) : "Participante");
           const isBusy = pending === p.id;
           return (
             <li key={p.id} className="flex items-center gap-3 px-4 py-2.5">
               <Avatar
-                name={info?.name ?? phone}
-                src={info?.thumbnail ?? undefined}
+                name={info?.name ?? waName ?? phone}
+                src={info?.thumbnail ?? p.imgUrl ?? undefined}
                 size={32}
               />
               <div className="min-w-0 flex-1">
@@ -458,7 +482,7 @@ export function GroupMembersPanel({
                     </span>
                   ) : null}
                 </div>
-                {info ? (
+                {(info || waName) && isRealPhone ? (
                   <div className="truncate text-[11px] text-muted-foreground">
                     {formatBrPhone(phone)}
                   </div>

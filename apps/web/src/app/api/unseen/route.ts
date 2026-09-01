@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/security/origin-guard";
+import { requireGroupScope } from "@/lib/security/context-token";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchOpenConversations } from "@/lib/chatwoot/conversations";
 import { handleApiError } from "@/lib/api/errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const ACCOUNT_ID = Number(process.env.CHATWOOT_ACCOUNT_ID ?? "1");
 
 // GET ?agent_id=X → conversas abertas que ESTE agente ainda não viu (ou que
 // tiveram atividade depois do último "visto" dele). É a lista "não vistas
@@ -16,6 +15,10 @@ export async function GET(req: NextRequest) {
   const denied = assertSameOrigin(req);
   if (denied) return denied;
 
+  const guard = requireGroupScope(req);
+  if (!guard.ok) return guard.response;
+  const accountId = guard.scope.accountId;
+
   try {
     const agentId = Number(req.nextUrl.searchParams.get("agent_id") ?? "0");
     if (!agentId) {
@@ -23,13 +26,13 @@ export async function GET(req: NextRequest) {
     }
 
     const [conversations, seenRows] = await Promise.all([
-      fetchOpenConversations(ACCOUNT_ID),
+      fetchOpenConversations(accountId),
       (async () => {
         const supabase = createAdminClient();
         const { data, error } = await supabase
           .from("conversation_seen")
           .select("conversation_id, last_seen_at")
-          .eq("account_id", ACCOUNT_ID)
+          .eq("account_id", accountId)
           .eq("agent_id", agentId);
         if (error) throw new Error(`Supabase error: ${error.message}`);
         return data ?? [];

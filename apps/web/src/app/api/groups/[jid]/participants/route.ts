@@ -26,9 +26,9 @@ export async function GET(req: NextRequest, { params }: Params) {
   try {
     const { jid } = await params;
     const inboxId = Number(req.nextUrl.searchParams.get("inbox_id") ?? "0");
-    const scopeDenied = assertInboxInScope(req, inboxId);
-    if (scopeDenied) return scopeDenied;
-    const lookup = await requireConnectedInstance(inboxId);
+    const gate = assertInboxInScope(req, inboxId);
+    if (!gate.ok) return gate.response;
+    const lookup = await requireConnectedInstance(gate.scope.accountId, inboxId);
     if (!lookup.ok) {
       return NextResponse.json({ error: lookup.error }, { status: lookup.status });
     }
@@ -52,11 +52,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     const inboxId = Number(req.nextUrl.searchParams.get("inbox_id") ?? "0");
     const input = body.parse(await req.json());
 
-    const scopeDenied = assertInboxInScope(req, inboxId);
+    const gate = assertInboxInScope(req, inboxId);
+    if (!gate.ok) return gate.response;
 
-    if (scopeDenied) return scopeDenied;
-
-    const lookup = await requireConnectedInstance(inboxId);
+    const lookup = await requireConnectedInstance(gate.scope.accountId, inboxId);
     if (!lookup.ok) {
       return NextResponse.json({ error: lookup.error }, { status: lookup.status });
     }

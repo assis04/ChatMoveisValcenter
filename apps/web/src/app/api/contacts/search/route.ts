@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/security/origin-guard";
+import { requireGroupScope } from "@/lib/security/context-token";
 import { chatwootRequest } from "@/lib/chatwoot/client";
 import { handleApiError } from "@/lib/api/errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const ACCOUNT_ID = Number(process.env.CHATWOOT_ACCOUNT_ID ?? "1");
 
 interface ChatwootContact {
   id: number;
@@ -29,6 +28,9 @@ export async function GET(req: NextRequest) {
   const denied = assertSameOrigin(req);
   if (denied) return denied;
 
+  const guard = requireGroupScope(req);
+  if (!guard.ok) return guard.response;
+
   try {
     const q = req.nextUrl.searchParams.get("q")?.trim() ?? "";
     if (q.length < 2) {
@@ -36,7 +38,7 @@ export async function GET(req: NextRequest) {
     }
 
     const res = await chatwootRequest<ChatwootSearchResponse>({
-      accountId: ACCOUNT_ID,
+      accountId: guard.scope.accountId,
       path: `/contacts/search?q=${encodeURIComponent(q)}&page=1`,
     });
 

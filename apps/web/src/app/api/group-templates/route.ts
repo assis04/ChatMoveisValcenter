@@ -8,8 +8,6 @@ import { templateBody } from "@/lib/templates/schema";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ACCOUNT_ID = Number(process.env.CHATWOOT_ACCOUNT_ID ?? "1");
-
 export async function GET(req: NextRequest) {
   const denied = assertSameOrigin(req);
   if (denied) return denied;
@@ -22,7 +20,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase
       .from("group_templates")
       .select("*")
-      .eq("account_id", ACCOUNT_ID)
+      .eq("account_id", guard.scope.accountId)
       .order("created_at", { ascending: true });
     if (error) throw new Error(`Supabase error: ${error.message}`);
     return NextResponse.json({ templates: data ?? [] });
@@ -43,7 +41,7 @@ export async function POST(req: NextRequest) {
     const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("group_templates")
-      .insert({ ...input, account_id: ACCOUNT_ID })
+      .insert({ ...input, account_id: guard.scope.accountId })
       .select("*")
       .single();
     if (error) throw new Error(`Supabase error: ${error.message}`);

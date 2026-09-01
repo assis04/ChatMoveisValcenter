@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameOrigin } from "@/lib/security/origin-guard";
+import { requireGroupScope } from "@/lib/security/context-token";
 import { chatwootRequest } from "@/lib/chatwoot/client";
 import { handleApiError } from "@/lib/api/errors";
 
@@ -11,7 +12,6 @@ export const dynamic = "force-dynamic";
 // so the members panel shows "João Silva" instead of "+55 11 9xxxx-xxxx".
 // Chatwoot has no batch-by-phone lookup, so we search per unique phone with a
 // small concurrency cap and memoize each result (contacts rarely change).
-const ACCOUNT_ID = Number(process.env.CHATWOOT_ACCOUNT_ID ?? "1");
 const CACHE_TTL_MS = 5 * 60_000;
 const MAX_PHONES = 256;
 const CONCURRENCY = 8;
@@ -29,21 +29,30 @@ interface ChatwootContact {
   thumbnail: string | null;
 }
 
-const cache = new Map<string, { value: ResolvedContact | null; expiresAt: number }>();
+// Keyed by `${accountId}:${digits}` — the same phone can be a different contact
+// in a different account, so the cache must never cross the account boundary.
+const cache = new Map<
+  string,
+  { value: ResolvedContact | null; expiresAt: number }
+>();
 
 function digitsOf(raw: string): string {
   return raw.replace(/\D/g, "");
 }
 
-async function resolveOne(digits: string): Promise<ResolvedContact | null> {
+async function resolveOne(
+  accountId: number,
+  digits: string,
+): Promise<ResolvedContact | null> {
   if (!digits) return null;
-  const hit = cache.get(digits);
+  const cacheKey = `${accountId}:${digits}`;
+  const hit = cache.get(cacheKey);
   if (hit && hit.expiresAt > Date.now()) return hit.value;
 
   let value: ResolvedContact | null = null;
   try {
     const res = await chatwootRequest<{ payload: ChatwootContact[] }>({
-      accountId: ACCOUNT_ID,
+      accountId,
       path: `/contacts/search?q=${encodeURIComponent(digits)}&page=1`,
     });
     // Match tolerating BR's optional 9th mobile digit / country-code variance:
@@ -59,7 +68,7 @@ async function resolveOne(digits: string): Promise<ResolvedContact | null> {
     // the panel just falls back to the formatted number.
     value = null;
   }
-  cache.set(digits, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  cache.set(cacheKey, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   return value;
 }
 
@@ -71,6 +80,10 @@ export async function POST(req: NextRequest) {
   const denied = assertSameOrigin(req);
   if (denied) return denied;
 
+  const guard = requireGroupScope(req);
+  if (!guard.ok) return guard.response;
+  const accountId = guard.scope.accountId;
+
   try {
     const { phones } = body.parse(await req.json());
     const unique = Array.from(new Set(phones.map(digitsOf).filter(Boolean)));
@@ -78,7 +91,9 @@ export async function POST(req: NextRequest) {
     const resolved: Record<string, ResolvedContact> = {};
     for (let i = 0; i < unique.length; i += CONCURRENCY) {
       const chunk = unique.slice(i, i + CONCURRENCY);
-      const results = await Promise.all(chunk.map(resolveOne));
+      const results = await Promise.all(
+        chunk.map((digits) => resolveOne(accountId, digits)),
+      );
       chunk.forEach((digits, idx) => {
         const r = results[idx];
         if (r) resolved[digits] = r;

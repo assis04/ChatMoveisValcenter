@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameOrigin } from "@/lib/security/origin-guard";
+import { requireGroupScope } from "@/lib/security/context-token";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { handleApiError } from "@/lib/api/errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const ACCOUNT_ID = Number(process.env.CHATWOOT_ACCOUNT_ID ?? "1");
 
 const recordBody = z.object({
   conversation_id: z.number().int().positive(),
@@ -20,12 +19,15 @@ export async function POST(req: NextRequest) {
   const denied = assertSameOrigin(req);
   if (denied) return denied;
 
+  const guard = requireGroupScope(req);
+  if (!guard.ok) return guard.response;
+
   try {
     const input = recordBody.parse(await req.json());
     const supabase = createAdminClient();
     const { error } = await supabase.from("conversation_seen").upsert(
       {
-        account_id: ACCOUNT_ID,
+        account_id: guard.scope.accountId,
         conversation_id: input.conversation_id,
         agent_id: input.agent_id,
         agent_name: input.agent_name,
@@ -45,6 +47,9 @@ export async function GET(req: NextRequest) {
   const denied = assertSameOrigin(req);
   if (denied) return denied;
 
+  const guard = requireGroupScope(req);
+  if (!guard.ok) return guard.response;
+
   try {
     const conversationId = Number(
       req.nextUrl.searchParams.get("conversation_id") ?? "0",
@@ -55,7 +60,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase
       .from("conversation_seen")
       .select("agent_id, agent_name, last_seen_at")
-      .eq("account_id", ACCOUNT_ID)
+      .eq("account_id", guard.scope.accountId)
       .eq("conversation_id", conversationId)
       .order("last_seen_at", { ascending: false });
     if (error) throw new Error(`Supabase error: ${error.message}`);

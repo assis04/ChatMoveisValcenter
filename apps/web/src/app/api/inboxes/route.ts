@@ -22,9 +22,9 @@ export async function GET(req: NextRequest) {
 
   try {
     if (req.nextUrl.searchParams.get("refresh") === "true") {
-      invalidateInstanceMappingCache();
+      invalidateInstanceMappingCache(guard.scope.accountId);
     }
-    const all = await getInstanceMappings();
+    const all = await getInstanceMappings(guard.scope.accountId);
     const inboxes = guard.scope.isAdmin
       ? all
       : all.filter((m) => guard.scope.inboxIds.includes(m.inbox_id));

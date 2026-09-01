@@ -164,11 +164,10 @@ export async function GET(req: NextRequest) {
     const includeParticipants =
       req.nextUrl.searchParams.get("participants") === "true";
 
-    const scopeDenied = assertInboxInScope(req, inboxId);
+    const gate = assertInboxInScope(req, inboxId);
+    if (!gate.ok) return gate.response;
 
-    if (scopeDenied) return scopeDenied;
-
-    const lookup = await requireConnectedInstance(inboxId);
+    const lookup = await requireConnectedInstance(gate.scope.accountId, inboxId);
     if (!lookup.ok) {
       return NextResponse.json({ error: lookup.error }, { status: lookup.status });
     }
@@ -192,9 +191,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const input = createBody.parse(await req.json());
-    const scopeDenied = assertInboxInScope(req, input.inbox_id);
-    if (scopeDenied) return scopeDenied;
-    const lookup = await requireConnectedInstance(input.inbox_id);
+    const gate = assertInboxInScope(req, input.inbox_id);
+    if (!gate.ok) return gate.response;
+    const lookup = await requireConnectedInstance(gate.scope.accountId, input.inbox_id);
     if (!lookup.ok) {
       return NextResponse.json({ error: lookup.error }, { status: lookup.status });
     }

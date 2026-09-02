@@ -25,6 +25,26 @@ function ctxToken(): string | null {
   }
 }
 
+// The scope token's payload carries the Chatwoot account id. The payload is not
+// secret (the HMAC signature only prevents tampering), so we can read it on the
+// client to build same-origin Chatwoot links for the CURRENT account instead of
+// hardcoding one — the app is multi-tenant. Returns null if unavailable.
+export function ctxAccountId(): number | null {
+  const token = ctxToken();
+  if (!token) return null;
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+  try {
+    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    const claims = JSON.parse(atob(padded)) as { account_id?: unknown };
+    const id = Number(claims.account_id);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface ApiOptions {
   method?: string;
   body?: unknown;

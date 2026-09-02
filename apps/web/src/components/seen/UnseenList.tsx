@@ -2,6 +2,7 @@
 
 import { ChevronRight, Eye, Loader2, RefreshCw } from "lucide-react";
 import { useUnseen } from "@/hooks/use-seen";
+import { ctxAccountId } from "@/lib/api/client";
 import { relativeFromEpoch } from "@/lib/utils";
 
 interface UnseenListProps {
@@ -13,9 +14,14 @@ export function UnseenList({ agentId, agentName }: UnseenListProps) {
   const { data, loading, error, reload } = useUnseen(agentId);
 
   const openConversation = (id: number) => {
-    // Navega o Chatwoot (mesma origem) direto pra conversa.
+    // Navega o Chatwoot (mesma origem) direto pra conversa, na conta do token
+    // (multi-tenant — nunca fixa a conta 1).
+    const accountId = ctxAccountId();
+    if (!accountId) return;
     try {
-      if (window.top) window.top.location.href = `/app/accounts/1/conversations/${id}`;
+      if (window.top) {
+        window.top.location.href = `/app/accounts/${accountId}/conversations/${id}`;
+      }
     } catch {
       // cross-origin bloqueado — ignora
     }

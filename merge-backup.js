@@ -119,7 +119,7 @@ const js = (v) => (v === null || v === undefined ? null : JSON.stringify(v));
           st.ci_criados++;
           dstCiId = (await dst.query(
             `INSERT INTO contact_inboxes (contact_id,inbox_id,source_id,hmac_verified,pubsub_token,created_at,updated_at)
-             VALUES ($1,$2,$3,$4,encode(gen_random_bytes(12),'hex'),$5,$6) RETURNING id`,
+             VALUES ($1,$2,$3,$4,md5(random()::text||clock_timestamp()::text),$5,$6) RETURNING id`,
             [dstContactId, DST_INBOX, cv.ci_source_id || cv.ct_identifier || String(cv.ct_id), cv.ci_hmac || false, cv.created_at, cv.updated_at]
           )).rows[0].id;
         }

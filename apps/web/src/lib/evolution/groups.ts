@@ -52,14 +52,16 @@ interface EvolutionChat {
   updatedAt?: string | null;
 }
 
-// A listagem de grupos vem do findChats (le do banco do Evolution, ~200ms) em
-// vez do fetchAllGroups ao vivo do Baileys, que o WhatsApp rate-limita ate
-// travar (5min+) quando o numero passa de ~150 grupos. Detalhe de cada grupo
-// (membros, descricao) continua vindo do findGroupInfos ao abrir o grupo.
-export async function fetchAllGroups(
-  instance: string,
-  _getParticipants = false,
-): Promise<EvolutionGroup[]> {
+interface EvolutionMembershipGroup {
+  id?: string;
+  subject?: string | null;
+  pictureUrl?: string | null;
+}
+
+// Fonte 1 (rapida, ~200ms): findChats le o banco do Evolution. So traz grupos
+// com atividade de chat sincronizada — pode FALTAR grupos onde o numero e membro
+// mas ainda nao teve mensagem sincronizada (tipico de numero recem-pareado).
+async function groupsFromChats(instance: string): Promise<EvolutionGroup[]> {
   const chats = await evolutionRequest<EvolutionChat[]>({
     method: "POST",
     path: `/chat/findChats/${encodeURIComponent(instance)}`,
@@ -82,6 +84,65 @@ export async function fetchAllGroups(
       };
       return group;
     });
+}
+
+// Fonte 2 (lenta, rate-limitada acima de ~150 grupos): fetchAllGroups do Baileys
+// = MEMBRESIA real (todos os grupos que o numero participa). Best-effort: se
+// estourar (504/timeout/erro), devolve [] e a lista degrada pro findChats.
+async function groupsFromMembership(
+  instance: string,
+): Promise<EvolutionGroup[]> {
+  try {
+    const res = await evolutionRequest<EvolutionMembershipGroup[]>({
+      path: `/group/fetchAllGroups/${encodeURIComponent(instance)}?getParticipants=false`,
+      timeoutMs: 280_000,
+    });
+    const list = Array.isArray(res) ? res : [];
+    const out: EvolutionGroup[] = [];
+    for (const g of list) {
+      const jid = String(g.id ?? "");
+      if (!jid.endsWith("@g.us")) continue;
+      out.push({
+        id: jid,
+        subject: g.subject?.trim() || jid.split("@")[0] || jid,
+        pictureUrl: g.pictureUrl ?? null,
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+// UNIAO das duas fontes: findChats (rapido/recencia/metadata) + membresia
+// (completude). Merge por JID priorizando a metadata do findChats. Assim grupos
+// onde o numero e membro mas ainda nao sincronizou chat (numero novo, ou grupo
+// compartilhado que so "conversou" em outra caixa) TAMBEM aparecem. O cache SWR
+// da rota absorve a lentidao da membresia (roda em background).
+export async function fetchAllGroups(
+  instance: string,
+  _getParticipants = false,
+): Promise<EvolutionGroup[]> {
+  const [chatRes, memberGroups] = await Promise.all([
+    groupsFromChats(instance).then(
+      (v) => ({ ok: true as const, value: v }),
+      (e) => ({ ok: false as const, error: e as unknown }),
+    ),
+    groupsFromMembership(instance),
+  ]);
+
+  if (!chatRes.ok && memberGroups.length === 0) {
+    throw chatRes.error;
+  }
+
+  const byJid = new Map<string, EvolutionGroup>();
+  if (chatRes.ok) {
+    for (const g of chatRes.value) byJid.set(g.id, g);
+  }
+  for (const g of memberGroups) {
+    if (!byJid.has(g.id)) byJid.set(g.id, g);
+  }
+  return [...byJid.values()];
 }
 
 export async function findGroupInfos(

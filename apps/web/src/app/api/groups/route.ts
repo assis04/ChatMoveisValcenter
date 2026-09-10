@@ -82,9 +82,17 @@ function refreshGroups(
   const inflight = fetchAllGroups(instance, includeParticipants)
     .then((value) => {
       const fetchedAt = Date.now();
-      groupsCache.set(key, { value, fetchedAt });
-      writeRedis(key, value, fetchedAt); // persiste no L2 pra sobreviver a deploys
-      return value;
+      // Anti-rebaixamento: fetchAllGroups pode voltar so o findChats quando a
+      // membresia (lenta) falha/estoura. Nao sobrescrevemos um cache MAIOR com um
+      // menor — mantemos a lista boa em vez de "sumir" grupos.
+      const prev = groupsCache.get(key);
+      const chosen =
+        prev && prev.fetchedAt > 0 && prev.value.length > value.length
+          ? prev.value
+          : value;
+      groupsCache.set(key, { value: chosen, fetchedAt });
+      writeRedis(key, chosen, fetchedAt); // persiste no L2 pra sobreviver a deploys
+      return chosen;
     })
     .catch((err) => {
       // mantem o valor velho (se houver); so limpa o inflight

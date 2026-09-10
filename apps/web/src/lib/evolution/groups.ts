@@ -95,7 +95,7 @@ async function groupsFromMembership(
   try {
     const res = await evolutionRequest<EvolutionMembershipGroup[]>({
       path: `/group/fetchAllGroups/${encodeURIComponent(instance)}?getParticipants=false`,
-      timeoutMs: 280_000,
+      timeoutMs: 480_000,
     });
     const list = Array.isArray(res) ? res : [];
     const out: EvolutionGroup[] = [];
@@ -135,9 +135,24 @@ export async function fetchAllGroups(
     throw chatRes.error;
   }
 
+  const memberByJid = new Map<string, EvolutionGroup>(
+    memberGroups.map((g) => [g.id, g]),
+  );
   const byJid = new Map<string, EvolutionGroup>();
   if (chatRes.ok) {
-    for (const g of chatRes.value) byJid.set(g.id, g);
+    for (const g of chatRes.value) {
+      // A membresia (fetchAllGroups) tem o NOME REAL do grupo; o findChats usa
+      // pushName, que pode vir VAZIO/truncado (ai o subject cai pro numero do JID
+      // e quebra a BUSCA por nome). Quando o grupo esta nas duas fontes, mantemos
+      // a ordem/foto do findChats mas usamos o subject da membresia.
+      const mem = memberByJid.get(g.id);
+      byJid.set(
+        g.id,
+        mem
+          ? { ...g, subject: mem.subject, pictureUrl: g.pictureUrl ?? mem.pictureUrl }
+          : g,
+      );
+    }
   }
   for (const g of memberGroups) {
     if (!byJid.has(g.id)) byJid.set(g.id, g);

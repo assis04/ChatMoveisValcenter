@@ -44,7 +44,7 @@ services:
 
   # ─── Chatwoot (Web) ──────────────────────────────────────────
   chatwoot-web:
-    image: ghcr.io/assis04/chatwoot:b7f8212
+    image: ghcr.io/assis04/chatwoot:0a07f05
     container_name: chatcenter_chatwoot_web
     restart: unless-stopped
     depends_on:
@@ -71,7 +71,7 @@ services:
 
   # ─── Chatwoot (Sidekiq — background jobs) ────────────────────
   chatwoot-sidekiq:
-    image: ghcr.io/assis04/chatwoot:b7f8212
+    image: ghcr.io/assis04/chatwoot:0a07f05
     container_name: chatcenter_chatwoot_sidekiq
     restart: unless-stopped
     depends_on:
@@ -101,7 +101,7 @@ services:
   # network. Exposing 8080 directly on the host would bypass TLS and the
   # nginx rate-limits.
   evolution:
-    image: evoapicloud/evolution-api:v2.3.7
+    image: chatcenter/evolution-api:2.3.7-lidfix
     container_name: chatcenter_evolution
     restart: unless-stopped
     depends_on:
@@ -172,6 +172,7 @@ services:
   certbot:
     image: certbot/certbot:latest
     container_name: chatcenter_certbot
+    restart: unless-stopped
     volumes:
       - certbot_webroot:/var/www/certbot
       - certbot_certs:/etc/letsencrypt

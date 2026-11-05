@@ -8,3 +8,11 @@ RUN f=/evolution/dist/main.js \
  && sed -i 's/)\.formatInternational()/)?.formatInternational()||"Participante"/g' $f \
  && test "$(grep -o 'formatInternational()||"Participante"' $f | wc -l)" = 2 \
  && node --check $f
+
+# 2026-11-05: msg de GRUPO reenviada apos falha de descriptografia vem sem key.participant
+# (pushName = "<lid>@lid") e o ChatwootService quebra em participant.split -> msg some.
+# patch-lidnull.js reconstitui a key. Aborta o build se o codigo da Evolution mudou.
+COPY patch-lidnull.js /tmp/patch-lidnull.js
+RUN node /tmp/patch-lidnull.js /evolution/dist/main.js \
+ && node --check /evolution/dist/main.js \
+ && rm /tmp/patch-lidnull.js

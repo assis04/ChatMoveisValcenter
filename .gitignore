@@ -60,3 +60,4 @@ snapshots/
 *.bak
 chatwoot-2/
 chatwoot-2/
+dedupe-media-*.log

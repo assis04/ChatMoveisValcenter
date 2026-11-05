@@ -101,7 +101,7 @@ services:
   # network. Exposing 8080 directly on the host would bypass TLS and the
   # nginx rate-limits.
   evolution:
-    image: chatcenter/evolution-api:2.3.7-lidfix2
+    image: chatcenter/evolution-api:2.3.7-lidfix3
     container_name: chatcenter_evolution
     restart: unless-stopped
     depends_on:

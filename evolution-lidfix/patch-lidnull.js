@@ -2,7 +2,7 @@
 //
 // Evolution 2.3.7 (Baileys 7.0.0-rc.9): msg de GRUPO que falha ao descriptografar e
 // reenviada pelo celular chega sem key.participant/participantAlt e com
-// pushName = "<lid>@lid". O ChatwootService quebra em participant.split (eventWhatsapp e
+// pushName = "<lid>@lid" (ou so "<lid>" quando vem do historico). O ChatwootService quebra em participant.split (eventWhatsapp e
 // createConversation) DEPOIS de criar a conversa -> mensagem descartada (~3/dia).
 //
 // Fix: no inicio do eventWhatsapp (so messages.upsert de grupo sem participant) reconstitui
@@ -33,14 +33,15 @@ const FIX = [
   'if(s==="messages.upsert"&&t?.key?.remoteJid?.endsWith("@g.us")&&!t.key.participant)try{',
   'if(t.key.fromMe){const w=o?.instance?.wuid||o?.client?.user?.id;',
   'w&&(t.key.participant=String(w).replace(/:\\d+@/,"@"))}',
-  'else{const l=t.key.participantAlt||(/@lid$/.test(t.pushName||"")?t.pushName:null);',
+  'else{const q=String(t.pushName||""),',
+  'l=t.key.participantAlt||(/^\\d{8,16}(@lid)?$/.test(q)?(q.endsWith("@lid")?q:q+"@lid"):null);',
   'if(l){t.key.participant=l;let p=null;',
   'try{p=await o?.client?.signalRepository?.lidMapping?.getPNForLID?.(l)}catch{}',
   'if(!p&&/@lid$/.test(l)){const r=await this.prismaRepository.message.findMany(',
   '{where:{key:{path:["participant"],equals:l}},select:{key:!0},take:30});',
   'p=r.find(x=>x?.key?.participantAlt)?.key?.participantAlt||null}',
   'if(p&&/@lid$/.test(l)){p=String(p).replace(/:\\d+@/,"@");t.key.participantAlt=p;t.key.addressingMode="lid"}',
-  'if(/@lid$/.test(t.pushName||"")){let c=null;',
+  'if(/^\\d{8,16}(@lid)?$/.test(q)){let c=null;',
   'if(p)c=await this.prismaRepository.contact.findFirst(',
   '{where:{remoteJid:p,instanceId:e.instanceId},select:{pushName:!0}});',
   't.pushName=c?.pushName||"Participante"}',

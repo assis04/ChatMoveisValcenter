@@ -13,6 +13,7 @@ import {
   updateGroupSubject,
 } from "@/lib/evolution/groups";
 import { handleApiError } from "@/lib/api/errors";
+import { assertGroupWriteAllowed } from "@/lib/evolution/group-write-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -91,6 +92,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
     const instance = lookup.mapping.instance_name;
 
+    // Protecao da conexao: espaca/limita escrita em grupo (gatilho device_removed)
+    await assertGroupWriteAllowed(instance);
+
     if (input.subject) await updateGroupSubject(instance, jid, input.subject);
     if (input.description !== undefined)
       await updateGroupDescription(instance, jid, input.description);
@@ -127,6 +131,9 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     if (!lookup.ok) {
       return NextResponse.json({ error: lookup.error }, { status: lookup.status });
     }
+
+    // Protecao da conexao: espaca/limita escrita em grupo (gatilho device_removed)
+    await assertGroupWriteAllowed(lookup.mapping.instance_name);
 
     await leaveGroup(lookup.mapping.instance_name, jid);
     return NextResponse.json({ inbox_id: inboxId, jid, ok: true });

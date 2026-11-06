@@ -7,6 +7,7 @@ import {
   revokeGroupInviteCode,
 } from "@/lib/evolution/groups";
 import { handleApiError } from "@/lib/api/errors";
+import { assertGroupWriteAllowed } from "@/lib/evolution/group-write-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,6 +49,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (!lookup.ok) {
       return NextResponse.json({ error: lookup.error }, { status: lookup.status });
     }
+    // Protecao da conexao: espaca/limita escrita em grupo (gatilho device_removed)
+    await assertGroupWriteAllowed(lookup.mapping.instance_name);
+
     const invite = await revokeGroupInviteCode(lookup.mapping.instance_name, jid);
     return NextResponse.json({ inbox_id: inboxId, jid, invite });
   } catch (err) {

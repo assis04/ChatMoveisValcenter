@@ -1,4 +1,5 @@
 import { evolutionRequest } from "./client";
+import { listRegistryGroups, type RegistryGroup } from "./chat-registry";
 import type {
   EvolutionGroup,
   EvolutionGroupParticipant,
@@ -52,12 +53,6 @@ interface EvolutionChat {
   updatedAt?: string | null;
 }
 
-interface EvolutionMembershipGroup {
-  id?: string;
-  subject?: string | null;
-  pictureUrl?: string | null;
-}
-
 // Fonte 1 (rapida, ~200ms): findChats le o banco do Evolution. So traz grupos
 // com atividade de chat sincronizada — pode FALTAR grupos onde o numero e membro
 // mas ainda nao teve mensagem sincronizada (tipico de numero recem-pareado).
@@ -86,78 +81,54 @@ async function groupsFromChats(instance: string): Promise<EvolutionGroup[]> {
     });
 }
 
-// Fonte 2 (lenta, rate-limitada acima de ~150 grupos): fetchAllGroups do Baileys
-// = MEMBRESIA real (todos os grupos que o numero participa). Best-effort: se
-// estourar (504/timeout/erro), devolve [] e a lista degrada pro findChats.
-async function groupsFromMembership(
-  instance: string,
-): Promise<EvolutionGroup[]> {
-  try {
-    const res = await evolutionRequest<EvolutionMembershipGroup[]>({
-      path: `/group/fetchAllGroups/${encodeURIComponent(instance)}?getParticipants=false`,
-      timeoutMs: 480_000,
-    });
-    const list = Array.isArray(res) ? res : [];
-    const out: EvolutionGroup[] = [];
-    for (const g of list) {
-      const jid = String(g.id ?? "");
-      if (!jid.endsWith("@g.us")) continue;
-      out.push({
-        id: jid,
-        subject: g.subject?.trim() || jid.split("@")[0] || jid,
-        pictureUrl: g.pictureUrl ?? null,
-      });
-    }
-    return out;
-  } catch {
-    return [];
-  }
-}
+// Fonte 2: o registro da tabela "Chat" (ver chat-registry.ts) = todos os grupos de
+// que o numero participa, com ou sem mensagem, lido do banco local da Evolution.
+// Substitui a membresia ao vivo (/group/fetchAllGroups), desligada em 2026-10-05
+// porque martelava o WhatsApp com metadata de 500-1400 grupos -> rate-overlimit ->
+// os numeros deslogavam em loop. NAO religar a membresia ao vivo.
+//
+// Ordem da lista: grupos novos (ultimos 14 dias) ainda sem mensagem no topo, depois
+// os com atividade (ordem do findChats) e por fim os parados.
+const NEW_GROUP_WINDOW_MS = 14 * 24 * 3600_000;
 
-// UNIAO das duas fontes: findChats (rapido/recencia/metadata) + membresia
-// (completude). Merge por JID priorizando a metadata do findChats. Assim grupos
-// onde o numero e membro mas ainda nao sincronizou chat (numero novo, ou grupo
-// compartilhado que so "conversou" em outra caixa) TAMBEM aparecem. O cache SWR
-// da rota absorve a lentidao da membresia (roda em background).
 export async function fetchAllGroups(
   instance: string,
   _getParticipants = false,
 ): Promise<EvolutionGroup[]> {
-  const [chatRes, memberGroups] = await Promise.all([
-    groupsFromChats(instance).then(
-      (v) => ({ ok: true as const, value: v }),
-      (e) => ({ ok: false as const, error: e as unknown }),
-    ),
-    groupsFromMembership(instance),
+  const [chatRes, regRes] = await Promise.allSettled([
+    groupsFromChats(instance),
+    listRegistryGroups(instance),
   ]);
+  // Lista parcial e pior que lista velha: se o registro falhar, lanca e o cache
+  // mantem a ultima lista boa (em vez de sumir com os grupos sem mensagem).
+  if (regRes.status === "rejected") throw regRes.reason;
+  const registry = regRes.value; // null = registro desligado (sem EVOLUTION_DB_URL)
+  if (chatRes.status === "rejected" && !registry) throw chatRes.reason;
+  const chats = chatRes.status === "fulfilled" ? chatRes.value : [];
+  if (!registry) return chats;
 
-  if (!chatRes.ok && memberGroups.length === 0) {
-    throw chatRes.error;
-  }
-
-  const memberByJid = new Map<string, EvolutionGroup>(
-    memberGroups.map((g) => [g.id, g]),
-  );
-  const byJid = new Map<string, EvolutionGroup>();
-  if (chatRes.ok) {
-    for (const g of chatRes.value) {
-      // A membresia (fetchAllGroups) tem o NOME REAL do grupo; o findChats usa
-      // pushName, que pode vir VAZIO/truncado (ai o subject cai pro numero do JID
-      // e quebra a BUSCA por nome). Quando o grupo esta nas duas fontes, mantemos
-      // a ordem/foto do findChats mas usamos o subject da membresia.
-      const mem = memberByJid.get(g.id);
-      byJid.set(
-        g.id,
-        mem
-          ? { ...g, subject: mem.subject, pictureUrl: g.pictureUrl ?? mem.pictureUrl }
-          : g,
-      );
-    }
-  }
-  for (const g of memberGroups) {
-    if (!byJid.has(g.id)) byJid.set(g.id, g);
-  }
-  return [...byJid.values()];
+  const reg = new Map(registry.map((g) => [g.id, g]));
+  const inChats = new Set(chats.map((g) => g.id));
+  const toGroup = (r: RegistryGroup): EvolutionGroup => ({
+    id: r.id,
+    subject: r.subject || r.id.split("@")[0] || r.id,
+    pictureUrl: null,
+  });
+  // O findChats usa o pushName, que pode vir vazio (ai o "nome" vira o numero do JID
+  // e a busca por nome nao acha); nesse caso vale o nome guardado no registro.
+  const named = (g: EvolutionGroup): EvolutionGroup => {
+    const r = reg.get(g.id);
+    return r?.subject && g.subject === g.id.split("@")[0] ? { ...g, subject: r.subject } : g;
+  };
+  const now = Date.now();
+  const onlyReg = registry.filter((r) => !inChats.has(r.id));
+  const fresh = onlyReg
+    .filter((r) => now - r.createdAt < NEW_GROUP_WINDOW_MS)
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const idle = onlyReg
+    .filter((r) => now - r.createdAt >= NEW_GROUP_WINDOW_MS)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  return [...fresh.map(toGroup), ...chats.map(named), ...idle.map(toGroup)];
 }
 
 export async function findGroupInfos(

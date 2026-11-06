@@ -1,7 +1,20 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
+import { GroupWriteThrottled } from "@/lib/evolution/group-write-guard";
 
 export function handleApiError(err: unknown): NextResponse {
+  if (err instanceof GroupWriteThrottled) {
+    return NextResponse.json(
+      {
+        error: err.message,
+        code: "group_write_throttled",
+        reason: err.reason,
+        retryAfter: err.retryAfter,
+      },
+      { status: 429, headers: { "Retry-After": String(err.retryAfter) } },
+    );
+  }
+
   if (err instanceof ZodError) {
     return NextResponse.json(
       { error: "validation_failed", issues: err.issues },

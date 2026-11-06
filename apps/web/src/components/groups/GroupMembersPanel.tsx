@@ -52,6 +52,17 @@ function participantPhone(p: {
   return { digits, isRealPhone };
 }
 
+// Traduz erros crus da Evolution numa frase util. O caso comum e a acao de admin
+// recusada pelo WhatsApp quando o numero nao e admin do grupo (400 not-authorized
+// / "Error updating participants"). Evita despejar o JSON cru pro usuario.
+function friendlyGroupError(err: unknown, fallback = "erro"): string {
+  const raw = err instanceof Error ? err.message : String(err ?? "");
+  if (/not[-\s]?auth|updating participants|forbidden|\b401\b|\b403\b/i.test(raw)) {
+    return "Este número não é admin deste grupo — só admins podem gerenciar participantes e infos.";
+  }
+  return raw || fallback;
+}
+
 interface GroupMembersPanelProps {
   inboxId: number;
   jid: string;
@@ -96,6 +107,12 @@ export function GroupMembersPanel({
   const resolved = useResolvedContacts(phones);
   const invite = useGroupInvite(inboxId, jid);
 
+  // "Sou admin deste grupo?" — sinal derivado do link de convite: a Evolution so
+  // devolve o inviteCode pra admin. Enquanto carrega, nao desabilita (evita
+  // flicker); apos carregar, sem link = nao sou admin -> trava as acoes de gestao.
+  const adminKnown = !invite.loading;
+  const canManage = adminKnown ? !!invite.data : true;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-10 text-sm text-muted-foreground">
@@ -124,7 +141,7 @@ export function GroupMembersPanel({
       await updateParticipants({ inbox_id: inboxId, jid, action, participants });
       await reload();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "erro");
+      setActionError(friendlyGroupError(err));
     } finally {
       setPending(null);
     }
@@ -147,7 +164,7 @@ export function GroupMembersPanel({
       await leaveGroup({ inbox_id: inboxId, jid });
       await reload();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "erro");
+      setActionError(friendlyGroupError(err));
     } finally {
       setPending(null);
     }
@@ -201,7 +218,7 @@ export function GroupMembersPanel({
       await reload();
       setEditing(false);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "erro ao salvar");
+      setActionError(friendlyGroupError(err, "erro ao salvar"));
     } finally {
       setPending(null);
     }
@@ -217,7 +234,7 @@ export function GroupMembersPanel({
       await patchGroup({ inbox_id: inboxId, jid, ...patch });
       await reload();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "erro");
+      setActionError(friendlyGroupError(err));
     } finally {
       setPending(null);
     }
@@ -234,7 +251,7 @@ export function GroupMembersPanel({
       await updateGroupPhoto({ inbox_id: inboxId, jid, image });
       await reload();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "erro ao enviar foto");
+      setActionError(friendlyGroupError(err, "erro ao enviar foto"));
     } finally {
       setUploadingPhoto(false);
     }
@@ -249,7 +266,7 @@ export function GroupMembersPanel({
           <button
             type="button"
             onClick={() => photoInputRef.current?.click()}
-            disabled={uploadingPhoto}
+            disabled={uploadingPhoto || !canManage}
             className="relative shrink-0 rounded-full"
             title="Trocar foto do grupo"
           >
@@ -319,7 +336,8 @@ export function GroupMembersPanel({
                   </h1>
                   <button
                     onClick={startEdit}
-                    className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                    disabled={!canManage}
+                    className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted/40 hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
                     aria-label="Editar grupo"
                   >
                     <Pencil className="h-3.5 w-3.5" />
@@ -346,7 +364,7 @@ export function GroupMembersPanel({
             hint="Cliente e equipe só leem; apenas admins publicam."
             on={group.announce ?? false}
             busy={pending === "announce"}
-            disabled={pending !== null}
+            disabled={pending !== null || !canManage}
             onToggle={() =>
               applySetting({ announce: !group.announce }, "announce")
             }
@@ -357,13 +375,23 @@ export function GroupMembersPanel({
             hint="Trava nome, foto e descrição do grupo."
             on={group.restrict ?? false}
             busy={pending === "restrict"}
-            disabled={pending !== null}
+            disabled={pending !== null || !canManage}
             onToggle={() =>
               applySetting({ restrict: !group.restrict }, "restrict")
             }
           />
         </div>
       </header>
+
+      {adminKnown && !canManage ? (
+        <div className="border-b border-border/40 bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">
+            Este número não é admin deste grupo.
+          </span>{" "}
+          Dá pra ver os participantes e sair do grupo; gerenciar (adicionar /
+          remover, promover, editar infos) é só pra admin.
+        </div>
+      ) : null}
 
       <div className="border-b border-border/40 px-4 py-3">
         <div className="mb-1.5 flex items-center justify-between">
@@ -412,6 +440,7 @@ export function GroupMembersPanel({
         <Button
           size="sm"
           variant="secondary"
+          disabled={!canManage}
           onClick={() => setAddOpen((v) => !v)}
         >
           <UserPlus className="h-3.5 w-3.5" />
@@ -491,6 +520,7 @@ export function GroupMembersPanel({
               <ParticipantMenu
                 isAdmin={p.admin !== null}
                 isOwner={p.admin === "superadmin"}
+                canManage={canManage}
                 disabled={isBusy || pending !== null}
                 onPromote={() => callAction("promote", [phone])}
                 onDemote={() => callAction("demote", [phone])}
@@ -613,6 +643,7 @@ function SettingRow({
 function ParticipantMenu({
   isAdmin,
   isOwner,
+  canManage,
   disabled,
   onPromote,
   onDemote,
@@ -620,6 +651,7 @@ function ParticipantMenu({
 }: {
   isAdmin: boolean;
   isOwner: boolean;
+  canManage: boolean;
   disabled: boolean;
   onPromote: () => void;
   onDemote: () => void;
@@ -627,7 +659,8 @@ function ParticipantMenu({
 }) {
   const [open, setOpen] = useState(false);
 
-  if (isOwner) return <span className="text-[10px] text-muted-foreground/60" />;
+  if (isOwner || !canManage)
+    return <span className="text-[10px] text-muted-foreground/60" />;
 
   return (
     <div className="relative">

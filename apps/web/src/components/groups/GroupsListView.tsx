@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import {
   ChevronRight,
   LayoutTemplate,
@@ -42,12 +42,15 @@ export function GroupsListView() {
   const [selectedJid, setSelectedJid] = useState<string | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
 
+  // useDeferredValue mantem o input responsivo enquanto o filtro/relista roda
+  // em prioridade menor — digitar nao trava mesmo com centenas de grupos.
+  const deferredQuery = useDeferredValue(query);
   const filtered = useMemo(() => {
     if (!groups) return [];
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     if (!q) return groups;
     return groups.filter((g) => g.subject.toLowerCase().includes(q));
-  }, [groups, query]);
+  }, [groups, deferredQuery]);
 
   if (showTemplates) {
     return <GroupTemplatesManager onBack={() => setShowTemplates(false)} />;
@@ -173,7 +176,10 @@ export function GroupsListView() {
               ) : (
                 <ul className="divide-y divide-border/40 rounded-lg border border-border/60">
                   {filtered.map((g) => (
-                    <li key={g.id}>
+                    <li
+                      key={g.id}
+                      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 56px" }}
+                    >
                       <button
                         onClick={() => setSelectedJid(g.id)}
                         className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/30"

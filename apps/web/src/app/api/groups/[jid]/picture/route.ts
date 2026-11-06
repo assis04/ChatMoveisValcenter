@@ -5,6 +5,7 @@ import { assertInboxInScope } from "@/lib/security/context-token";
 import { requireConnectedInstance } from "@/lib/chatwoot/instances";
 import { updateGroupPicture } from "@/lib/evolution/groups";
 import { handleApiError } from "@/lib/api/errors";
+import { assertGroupWriteAllowed } from "@/lib/evolution/group-write-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +40,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       /^data:image\/[a-zA-Z0-9.+-]+;base64,/,
       "",
     );
+    // Protecao da conexao: espaca/limita escrita em grupo (gatilho device_removed)
+    await assertGroupWriteAllowed(lookup.mapping.instance_name);
+
     await updateGroupPicture(lookup.mapping.instance_name, jid, image);
     return NextResponse.json({ inbox_id: inboxId, jid, ok: true });
   } catch (err) {

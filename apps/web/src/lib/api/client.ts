@@ -76,7 +76,14 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   if (options.body !== undefined) init.body = JSON.stringify(options.body);
   if (options.signal) init.signal = options.signal;
 
-  const res = await fetch(`${BASE}${path}`, init);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, init);
+  } catch (err) {
+    // Cancelamento e intencional (quem chamou trata); o resto e falha de rede.
+    if (err instanceof Error && err.name === "AbortError") throw err;
+    throw new ApiError(0, null, "Sem conexão com o servidor. Confira a internet e tente de novo.");
+  }
   const ct = res.headers.get("content-type") ?? "";
   const payload: unknown = ct.includes("application/json")
     ? await res.json()
@@ -89,8 +96,24 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
       "error" in payload &&
       typeof (payload as { error: unknown }).error === "string"
         ? (payload as { error: string }).error
-        : `request failed with status ${res.status}`;
+        : fallbackMessage(res.status);
     throw new ApiError(res.status, payload, message);
   }
   return payload as T;
+}
+
+// Resposta de erro sem JSON da nossa API = veio do nginx (app reiniciando,
+// timeout) ou de outro intermediario. Vira uma frase que diz o que fazer, em vez
+// de "request failed with status 502" na tela do agente.
+function fallbackMessage(status: number): string {
+  if (status === 502 || status === 503 || status === 504) {
+    return "A Gestão de Grupos está reiniciando ou demorou para responder. Aguarde alguns segundos e tente de novo.";
+  }
+  if (status === 401 || status === 403) {
+    return "Sua sessão expirou. Recarregue a página do Chatwoot (F5) e tente de novo.";
+  }
+  if (status === 413) {
+    return "O arquivo é grande demais para enviar.";
+  }
+  return `Não foi possível concluir a ação (erro ${status}). Tente de novo em instantes.`;
 }

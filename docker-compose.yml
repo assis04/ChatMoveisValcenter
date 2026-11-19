@@ -11,7 +11,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: chatwoot_production
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      # -d explicito: sem ele o pg_isready tenta o banco com o nome do usuario
+      # (que nao existe) e o Postgres loga um FATAL a cada 10s.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d chatwoot_production"]
       interval: 10s
       timeout: 5s
       retries: 5

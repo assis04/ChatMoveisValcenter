@@ -16,3 +16,7 @@ COPY patch-lidnull.js /tmp/patch-lidnull.js
 RUN node /tmp/patch-lidnull.js /evolution/dist/main.js \
  && node --check /evolution/dist/main.js \
  && rm /tmp/patch-lidnull.js
+
+# lidfix4: Baileys rc.9 confirma as stanzas <status> do WhatsApp (PR evolution-api#2788)
+COPY patch-status-ack.cjs /tmp/patch-status-ack.cjs
+RUN node /tmp/patch-status-ack.cjs /evolution
